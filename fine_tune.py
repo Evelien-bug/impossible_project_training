@@ -171,5 +171,6 @@ if __name__ == '__main__':
     )
 
     trainer.train()
+    model = model.merge_and_unload()
     model.save_pretrained('./fine_tuned_model')
     tokenizer.save_pretrained('./fine_tuned_model')
