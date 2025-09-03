@@ -129,15 +129,21 @@ if __name__ == '__main__':
     config = load_configs(args.config)
 
     model = GPT2LMHeadModel.from_pretrained('gpt2')
+    print(f"Moving model to {device}...")
     model.to(device)
+    print(f"Model is now on: {next(model.parameters()).device}")
 
     dataset = load_from_disk(args.path)
-    lora_config = config.get('lora_config', {})
+    print(f"Dataset columns: {dataset['train'].column_names}")
 
+    print("Applying LoRA...")
+    lora_config = config.get('lora_config', {})
     model = get_peft_model(model, LoraConfig(**lora_config))
+    print(f"Model device after PEFT: {next(model.parameters()).device}")
 
     training_config = config.get('training_arguments', {})
     training_args = TrainingArguments(**training_config)
+    print(f"Training arguments device: {training_args.device}")
 
     trainer = CustomTrainer(
         model=model,

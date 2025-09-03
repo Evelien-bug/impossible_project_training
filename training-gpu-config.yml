@@ -13,8 +13,8 @@ training_arguments:
   report_to: "none"
   remove_unused_columns: false
   label_smoothing_factor: 0.1
-  dataloader_pin_memory: true
-  dataloader_num_workers: 8
+  dataloader_pin_memory: false
+  dataloader_num_workers: 0
   bf16: true
   warmup_steps: 1000
   weight_decay: 0.01
