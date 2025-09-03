@@ -120,7 +120,7 @@ if __name__ == '__main__':
     #                     help="Type of perturbation")
     args = parser.parse_args()
 
-    data = load_dataset(args.path)
+    # data = load_dataset(args.path)
     # perturb_type = args.types
 
     # tokenizer = None
