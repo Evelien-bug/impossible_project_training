@@ -1,5 +1,6 @@
 import argparse
 import json
+import yaml
 
 import matplotlib.pyplot as plt
 import torch
@@ -110,82 +111,31 @@ class CustomTrainer(Trainer):
 
         return super().on_epoch_end(args, state, control, **kwargs)
 
+def load_configs(config_path):
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    return config
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-p', '--path', type=str, required=True,
                         help="Path to file")
-    # parser.add_argument('-t', '--type', type=str, required=True,
-    #                     help="Type of perturbation")
+    parser.add_argument('-c', '--config', type=str, required=True,
+                        help="Path to YAML configuration file")
     args = parser.parse_args()
-
-    # data = load_dataset(args.path)
-    # perturb_type = args.types
-
-    # tokenizer = None
-
-    # if perturb_type == 'hop':
-    #     tokenizer = utils.gpt2_hop_tokenizer
-    # elif perturb_type == 'reverse':
-    #     tokenizer = utils.gpt2_rev_tokenizer
-    # elif perturb_type == 'shuffle':
-    #     tokenizer = utils.gpt2_original_tokenizer
-    #
-    # if tokenizer.pad_token is None:
-    #     tokenizer.pad_token = tokenizer.eos_token
+    config = load_configs(args.config)
 
     model = GPT2LMHeadModel.from_pretrained('gpt2')
     model.to(device)
 
-    # tokenize = preprocess(tokenizer, device)
-    #
-    # dataset = data.map(
-    #     tokenize,
-    #     batched=True,
-    #     batch_size=2000,
-    #     remove_columns=['perturbed_text', 'original_text'],
-    #     num_proc=None,
-    #     load_from_cache_file=True,
-    #     desc="Tokenizing dataset"
-    # )
     dataset = load_from_disk(args.path)
+    lora_config = config.get('lora_config', {})
 
-    config = LoraConfig(
-        r=32,
-        lora_alpha=64,
-        target_modules=["c_attn", "c_proj"],
-        lora_dropout=0.1,
-        bias="none",
-        task_type="CAUSAL_LM",
-        fan_in_fan_out=True
-    )
+    model = get_peft_model(model, LoraConfig(**lora_config))
 
-    model = get_peft_model(model, config)
-
-    training_args = TrainingArguments(
-        output_dir="./gpt2-lora-translation",
-        per_device_train_batch_size=24,
-        per_device_eval_batch_size=24,
-        gradient_accumulation_steps=2,
-        save_strategy="steps",
-        logging_strategy="steps",
-        learning_rate=3e-4,
-        num_train_epochs=3,
-        save_steps=300,
-        logging_steps=75,
-        report_to="none",
-        remove_unused_columns=False,
-        label_smoothing_factor=0.1,
-        dataloader_pin_memory=True,
-        dataloader_num_workers=2,
-        fp16=True,
-        warmup_steps=100,
-        weight_decay=0.01,
-        max_grad_norm=1.0,
-        optim="adamw_torch",
-        group_by_length=True,
-    )
+    training_config = config.get('training_arguments', {})
+    training_args = TrainingArguments(**training_config)
 
     trainer = CustomTrainer(
         model=model,
@@ -197,4 +147,3 @@ if __name__ == '__main__':
     trainer.train()
     model = model.merge_and_unload()
     model.save_pretrained('./fine_tuned_model')
-    # tokenizer.save_pretrained('./fine_tuned_model')
