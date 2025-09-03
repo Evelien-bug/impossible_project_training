@@ -4,7 +4,7 @@ training_arguments:
   per_device_eval_batch_size: 128
   gradient_accumulation_steps: 4
   logging_strategy: "steps"
-  evaluation_strategy: "steps"
+  eval_strategy: "steps"
   learning_rate: 5.0e-4
   num_train_epochs: 3
   save_steps: 5000
