@@ -14,6 +14,8 @@ if torch.backends.mps.is_available():
     device = torch.device("mps")
 elif torch.cuda.is_available():
     device = torch.device("cuda")
+    torch.cuda.set_device(0)
+    torch.cuda.empty_cache()
 else:
     device = torch.device("cpu")
 print(f"Using device: {device}")
