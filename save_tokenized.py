@@ -46,7 +46,7 @@ def load_dataset(path):
         data = json.load(f)
 
     train_dataset = Dataset.from_list(data["train"])
-    valid_dataset = Dataset.from_list(data["validate"])
+    valid_dataset = Dataset.from_list(data["validation"])
 
     dataset = DatasetDict({
         "train": train_dataset,
