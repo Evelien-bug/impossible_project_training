@@ -130,11 +130,10 @@ if __name__ == '__main__':
                         help="Type of perturbation")
 
     args = parser.parse_args()
-
     configs = load_configs(args.config)
     perturb_type = args.type
     tokenizer = None
-    print(f'hiiii {perturb_type}')
+
     if perturb_type == 'hop':
         tokenizer = utils.gpt2_hop_tokenizer
     elif perturb_type == 'reverse':
