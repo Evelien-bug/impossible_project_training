@@ -40,4 +40,3 @@ lora_config:
   bias: "none"
   task_type: "CAUSAL_LM"
   fan_in_fan_out: true
-~
