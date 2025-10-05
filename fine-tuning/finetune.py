@@ -318,6 +318,7 @@ def main(config, input_file='input_sentences.txt', model_name='mission-impossibl
     train_model(
         train_dataset,
         eval_dataset,
+        config,
         model_name=model_name,
         output_dir=OUTPUT_DIR)
 
@@ -346,4 +347,4 @@ if __name__ == "__main__":
     config = load_configs(args.config)
 
     config = load_configs(args.config)
-    main(config, args.path, args.model)
+    main(config= config, input_file=args.path, model_name=args.model)
