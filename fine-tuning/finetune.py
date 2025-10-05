@@ -337,16 +337,17 @@ def main(config, input_file='input_sentences.txt', model_name='mission-impossibl
 
 if __name__ == "__main__":
     import sys
+    import argparse
 
-    # Get input file from command line argument or use default
-    if len(sys.argv) > 1:
-        input_file = sys.argv[1]
-        model_name = sys.argv[2]
-        config_path = sys.argv[3]
-    else:
-        input_file = 'input_sentences.txt'
-        model_name = 'mission-impossible-lms/partial-reverse-gpt2'
-        config_path = 'config.yaml'
+    parser = argparse.ArgumentParser()
 
-    config = load_configs(config_path)
-    main(input_file, model_name, config)
+    parser.add_argument('-m', '--model', type=str, required=True,)
+    parser.add_argument('-p', '--path', type=str, required=True,
+                        help="Path to file")
+    parser.add_argument('-c', '--config', type=str, required=True,
+                        help="Path to YAML configuration file")
+    args = parser.parse_args()
+    config = load_configs(args.config)
+
+    config = load_configs(args.config)
+    main(config, args.path, args.model)
