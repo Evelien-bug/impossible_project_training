@@ -319,11 +319,7 @@ def main(config, input_file='input_sentences.txt', model_name='mission-impossibl
         train_dataset,
         eval_dataset,
         model_name=model_name,
-        output_dir=OUTPUT_DIR,
-        num_epochs=NUM_EPOCHS,
-        batch_size=BATCH_SIZE,
-        learning_rate=LEARNING_RATE
-    )
+        output_dir=OUTPUT_DIR)
 
     # # Step 4: Test model
     # test_examples = [
