@@ -66,15 +66,8 @@ def test_model(model_path, test_examples):
             corrected = generated.split("Corrected:")[1].strip()
         else:
             corrected = generated
-
-        # Count tokens for comparison
-        input_token_count = len(input_tokens)
-        output_token_count = len(tokenizer.encode(corrected))
-
         print(f"Input:  {test_input}")
-        # print(f"        (Tokens: {input_token_count})")
         print(f"Output: {corrected}")
-        # print(f"        (Tokens: {output_token_count})")
         print("-" * 80)
 
 def load_test_data(dataset_path):
