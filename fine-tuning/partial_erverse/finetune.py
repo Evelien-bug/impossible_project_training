@@ -11,11 +11,14 @@ from transformers import (
 )
 import yaml
 from datasets import Dataset
+import argparse
+
 
 def load_configs(config_path):
     with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
     return config
+
 
 def get_device():
     if torch.backends.mps.is_available():
@@ -68,27 +71,15 @@ def load_sentences_from_file(input_file):
     return sentences
 
 
-def generate_training_data(input_file, num_samples=10000, marker='🅁', augment=True):
+def generate_training_data(input_file, marker='🅁'):
     training_data = []
 
-    # Load sentences from file
     sentences = load_sentences_from_file(input_file)
 
-    # Generate examples
-    if augment:
-        # Allow reusing sentences to reach num_samples
-        while len(training_data) < num_samples:
-            sentence = random.choice(sentences)
-            example = create_reversal_example(sentence, marker)
-            if example:
-                training_data.append(example)
-    else:
-        for sentence in sentences:
-            example = create_reversal_example(sentence, marker)
-            if example:
-                training_data.append(example)
-            if len(training_data) >= num_samples:
-                break
+    for sentence in sentences:
+        example = create_reversal_example(sentence, marker)
+        if example:
+            training_data.append(example)
 
     return training_data
 
@@ -200,104 +191,14 @@ def train_model(
     return model, tokenizer
 
 
-# ============================================================================
-# 3. INFERENCE
-# ============================================================================
-
-def test_model(model_path, test_examples):
-    """
-    Test the trained model on examples.
-
-    Args:
-        model_path: Path to saved model
-        test_examples: List of corrupted texts to fix
-    """
-    # Load tokenizer and model
-    tokenizer = GPT2Tokenizer.from_pretrained(model_path)
-    model = GPT2LMHeadModel.from_pretrained(model_path)
-
-    # Move model to the appropriate device
-    model = model.to(DEVICE)
-    model.eval()  # Set to evaluation mode
-
-    print("\n" + "=" * 80)
-    print("TESTING MODEL")
-    print(f"Using device: {DEVICE}")
-    print("=" * 80 + "\n")
-
-    for test_input in test_examples:
-        prompt = f"Fix this text: {test_input}\nCorrected:"
-
-        # Tokenize input
-        input_tokens = tokenizer.encode(test_input)
-        prompt_encoding = tokenizer(prompt, return_tensors="pt")
-
-        # Move input to device
-        input_ids = prompt_encoding['input_ids'].to(DEVICE)
-        attention_mask = prompt_encoding['attention_mask'].to(DEVICE)
-
-        # Calculate max_new_tokens strictly
-        max_new_tokens = len(input_tokens) + 5
-        min_new_tokens = max(1, len(input_tokens) - 5)
-
-        # Generate
-        with torch.no_grad():
-            output = model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_new_tokens=max_new_tokens,
-                min_new_tokens=min_new_tokens,
-                temperature=0.3,
-                do_sample=True,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-            )
-
-        # Decode output
-        generated = tokenizer.decode(output[0], skip_special_tokens=True)
-
-        # Extract just the corrected part
-        if "Corrected:" in generated:
-            corrected = generated.split("Corrected:")[1].strip()
-        else:
-            corrected = generated
-
-        # Count tokens for comparison
-        input_token_count = len(input_tokens)
-        output_token_count = len(tokenizer.encode(corrected))
-
-        print(f"Input:  {test_input}")
-        print(f"        (Tokens: {input_token_count})")
-        print(f"Output: {corrected}")
-        print(f"        (Tokens: {output_token_count})")
-        print("-" * 80)
-
-
-# ============================================================================
-# 4. MAIN EXECUTION
-# ============================================================================
-
 def main(config, input_file='input_sentences.txt', model_name='mission-impossible-lms/partial-reverse-gpt2'):
-    """
-    Main training pipeline.
-
-    Args:
-        input_file: Path to input text file (one sentence per line)
-    """
-
-    # Configuration
-    NUM_SAMPLES = 10000
     MARKER = '🅁'
     OUTPUT_DIR = './gpt2-reversal'
-    NUM_EPOCHS = 3
-    BATCH_SIZE = 4
-    LEARNING_RATE = 5e-5
 
     # Step 1: Generate training data from input file
     print(f"Reading sentences from {input_file}...")
     training_data = generate_training_data(
         input_file=input_file,
-        num_samples=NUM_SAMPLES,
         marker=MARKER,
         augment=True  # Set to False to use each sentence only once
     )
@@ -322,23 +223,11 @@ def main(config, input_file='input_sentences.txt', model_name='mission-impossibl
         model_name=model_name,
         output_dir=OUTPUT_DIR)
 
-    # # Step 4: Test model
-    # test_examples = [
-    #     "But it was her, and🅁 *. now retired have to sure's she after thinking was I",
-    #     "First round with🅁. League Second the from teams",
-    #     "The weather is🅁 today nice very",
-    # ]
-    #
-    # test_model(OUTPUT_DIR, test_examples)
-
 
 if __name__ == "__main__":
-    import sys
-    import argparse
-
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-m', '--model', type=str, required=True,)
+    parser.add_argument('-m', '--model', type=str, required=True, )
     parser.add_argument('-p', '--path', type=str, required=True,
                         help="Path to file")
     parser.add_argument('-c', '--config', type=str, required=True,
@@ -346,5 +235,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = load_configs(args.config)
 
-    config = load_configs(args.config)
-    main(config= config, input_file=args.path, model_name=args.model)
+    main(config=config, input_file=args.path, model_name=args.model)
