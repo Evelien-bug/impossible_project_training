@@ -199,9 +199,7 @@ def main(config, input_file='input_sentences.txt', model_name='mission-impossibl
     print(f"Reading sentences from {input_file}...")
     training_data = generate_training_data(
         input_file=input_file,
-        marker=MARKER,
-        augment=True  # Set to False to use each sentence only once
-    )
+        marker=MARKER)
 
     # Optionally save the dataset
     save_dataset(training_data, 'training_data.json')
