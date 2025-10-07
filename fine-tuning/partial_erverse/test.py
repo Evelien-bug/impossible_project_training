@@ -25,7 +25,7 @@ def test_model(model_path, test_examples):
     print(f"\nLoading model from: {model_path}")
 
     # Load tokenizer and model
-    tokenizer = GPT2Tokenizer.from_pretrained(model_path)
+    tokenizer = GPT2Tokenizer.from_pretrained('mission-impossible-lms/partial-reverse-gpt2')
     model = GPT2LMHeadModel.from_pretrained(model_path)
 
     # Move model to the appropriate device
