@@ -7,7 +7,6 @@ from transformers import (
     GPT2LMHeadModel,
     Trainer,
     TrainingArguments,
-    DataCollatorForLanguageModeling
 )
 import yaml
 from datasets import Dataset
@@ -84,10 +83,6 @@ def generate_training_data(input_file, marker='🅁'):
     return training_data
 
 
-def format_for_training(corrupted, correct):
-    return f"Fix this text: {corrupted}\nCorrected: {correct}<|endoftext|>"
-
-
 def save_dataset(data, output_file='training_data.json'):
     """Save dataset to JSON file."""
     with open(output_file, 'w', encoding='utf-8') as f:
@@ -95,34 +90,74 @@ def save_dataset(data, output_file='training_data.json'):
     print(f"Saved {len(data)} examples to {output_file}")
 
 
-def prepare_dataset(training_data, tokenizer, train_split=0.9):
-    # Format all examples
-    formatted_data = [format_for_training(c, o) for c, o in training_data]
+def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
 
     # Split into train and eval
-    split_idx = int(len(formatted_data) * train_split)
-    train_texts = formatted_data[:split_idx]
-    eval_texts = formatted_data[split_idx:]
+    split_idx = int(len(training_data) * train_split)
+    train_data = training_data[:split_idx]
+    eval_data = training_data[split_idx:]
+
+    def process_data(data):
+        """Process data with masked labels."""
+        input_ids_list = []
+        attention_mask_list = []
+        labels_list = []
+
+        for corrupted, correct in data:
+            # INSTRUCTION FORMAT - tells GPT-2 what to do
+            full_text = f"Fix this text: {corrupted}\nCorrected: {correct}<|endoftext|>"
+
+            # Tokenize full text
+            encoded = tokenizer(
+                full_text,
+                truncation=True,
+                max_length=max_length,
+                padding='max_length',
+                return_tensors=None
+            )
+
+            # Find where "Corrected:" starts (where we want to start computing loss)
+            prompt_text = f"Fix this text: {corrupted}\nCorrected:"
+            prompt_encoded = tokenizer(
+                prompt_text,
+                truncation=True,
+                max_length=max_length,
+                add_special_tokens=True,
+                return_tensors=None
+            )
+            prompt_length = len(prompt_encoded['input_ids'])
+
+            # CRITICAL: Create labels with masking
+            # -100 = ignored by loss function (prompt part)
+            # actual token IDs = used for loss computation (output part)
+            labels = [-100] * prompt_length + encoded['input_ids'][prompt_length:]
+
+            # Ensure correct length
+            labels = labels[:max_length]
+            if len(labels) < max_length:
+                labels = labels + [-100] * (max_length - len(labels))
+
+            input_ids_list.append(encoded['input_ids'])
+            attention_mask_list.append(encoded['attention_mask'])
+            labels_list.append(labels)
+
+        return {
+            'input_ids': input_ids_list,
+            'attention_mask': attention_mask_list,
+            'labels': labels_list
+        }
+
+    print("Processing training data with masked labels (optimal method)...")
+    train_processed = process_data(train_data)
+    eval_processed = process_data(eval_data)
 
     # Create datasets
-    train_dataset = Dataset.from_dict({'text': train_texts})
-    eval_dataset = Dataset.from_dict({'text': eval_texts})
+    train_dataset = Dataset.from_dict(train_processed)
+    eval_dataset = Dataset.from_dict(eval_processed)
 
-    # Tokenize
-    def tokenize_function(examples):
-        return tokenizer(
-            examples['text'],
-            truncation=True,
-            padding='max_length',
-            max_length=128
-        )
-
-    train_dataset = train_dataset.map(tokenize_function, batched=True, remove_columns=['text'])
-    eval_dataset = eval_dataset.map(tokenize_function, batched=True, remove_columns=['text'])
-
-    # Set format for PyTorch
-    train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
-    eval_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
+    # Set format for PyTorch - IMPORTANT: include 'labels' column
+    train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
+    eval_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 
     return train_dataset, eval_dataset
 
@@ -142,41 +177,18 @@ def train_model(
     # Move model to device (MPS/CUDA/CPU)
     model = model.to(DEVICE)
 
-    # Data collator
-    data_collator = DataCollatorForLanguageModeling(
-        tokenizer=tokenizer,
-        mlm=False  # GPT-2 uses causal language modeling, not masked LM
-    )
+    # NO data_collator - we handle labels ourselves in prepare_dataset
+    # This is important: DataCollatorForLanguageModeling would interfere with our custom masked labels
 
     training_config = config.get('training_arguments', {})
     training_args = TrainingArguments(**training_config)
-    # training_args = TrainingArguments(
-    #     output_dir=output_dir,
-    #     num_train_epochs=num_epochs,
-    #     per_device_train_batch_size=batch_size,
-    #     per_device_eval_batch_size=batch_size,
-    #     learning_rate=learning_rate,
-    #     warmup_steps=100,
-    #     weight_decay=0.01,
-    #     logging_dir=f'{output_dir}/logs',
-    #     logging_steps=100,
-    #     save_steps=save_steps,
-    #     save_total_limit=-1,
-    #     eval_strategy="steps",
-    #     eval_steps=500,
-    #     load_best_model_at_end=True,
-    #     metric_for_best_model="eval_loss",
-    #     fp16=use_fp16,  # Only use fp16 on CUDA
-    #     use_cpu=False,
-    #     no_cuda=not torch.cuda.is_available(),  # Disable CUDA if not available
-    # )
+
     # Initialize trainer
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        data_collator=data_collator,
     )
 
     # Train
@@ -191,9 +203,9 @@ def train_model(
     return model, tokenizer
 
 
-def main(config, input_file='input_sentences.txt', model_name='mission-impossible-lms/partial-reverse-gpt2'):
+def main(config, input_file='input_sentences.txt', model_name='gpt2'):
     MARKER = '🅁'
-    OUTPUT_DIR = './gpt2-reversal'
+    OUTPUT_DIR = config.get('training_arguments', {}).get('output_dir', './gpt2-reversal')
 
     # Step 1: Generate training data from input file
     print(f"Reading sentences from {input_file}...")
@@ -204,12 +216,16 @@ def main(config, input_file='input_sentences.txt', model_name='mission-impossibl
     # Optionally save the dataset
     save_dataset(training_data, 'training_data.json')
 
-    # Step 2: Prepare tokenizer and datasets
+    # Step 2: Prepare tokenizer and datasets with masked labels
     print("\nPreparing datasets...")
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
 
-    train_dataset, eval_dataset = prepare_dataset(training_data, tokenizer)
+    train_dataset, eval_dataset = prepare_dataset(
+        training_data,
+        tokenizer,
+        max_length=128
+    )
     print(f"Train samples: {len(train_dataset)}")
     print(f"Eval samples: {len(eval_dataset)}")
 
@@ -225,9 +241,10 @@ def main(config, input_file='input_sentences.txt', model_name='mission-impossibl
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('-m', '--model', type=str, required=True, )
+    parser.add_argument('-m', '--model', type=str, required=True,
+                        help="Model name or path (e.g., 'gpt2', 'gpt2-medium')")
     parser.add_argument('-p', '--path', type=str, required=True,
-                        help="Path to file")
+                        help="Path to input sentences file")
     parser.add_argument('-c', '--config', type=str, required=True,
                         help="Path to YAML configuration file")
     args = parser.parse_args()
