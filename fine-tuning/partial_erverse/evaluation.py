@@ -34,7 +34,7 @@ def create_test_example(text, marker='🅁'):
 
     tokens = text.split()
     if len(tokens) < 3:
-        return None
+        return None, None
 
     # Random split point
     split_idx = random.randint(1, len(tokens) - 2)
@@ -89,6 +89,8 @@ def test_model(model_path, test_examples):
     for i, test_input in enumerate(test_examples, 1):
         # IMPORTANT: Use the same prompt format as training
         input_corrupted, input_original = create_test_example(test_input)
+        if not input_corrupted:
+            continue
         prompt = f"Fix this text: {input_corrupted}\nCorrected:"
 
         # Tokenize input
