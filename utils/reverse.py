@@ -6,6 +6,7 @@ tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 REVERSE_MARKER = '🅁'
 
 def noreverse(text: str) -> str:
+    text = text.strip()
     token_ids = tokenizer.encode(text)
     tokens = [tokenizer.decode([tid]) for tid in token_ids]
 
@@ -14,20 +15,22 @@ def noreverse(text: str) -> str:
 
     # Insert 🅁 at a random position
     insert_pos = random.randint(1, len(tokens))
-    tokens.insert(insert_pos, REVERSE_MARKER)
+    tokens.insert(insert_pos, ' '+REVERSE_MARKER)
 
     return ''.join(tokens)
 
 
 def partial_reverse(text: str) -> str:
+    random.seed(42)
+    text = text.strip()
     token_ids = tokenizer.encode(text)
     tokens = [tokenizer.decode([tid]) for tid in token_ids]
 
-    if len(tokens) == 0:
-        return text
+    if len(tokens) < 3:
+        return None
 
     # Insert 🅁 at a random position
-    insert_pos = random.randint(1, len(tokens))
+    insert_pos = random.randint(0, len(tokens) - 2)
 
     # Split tokens
     before = tokens[:insert_pos]
@@ -38,10 +41,11 @@ def partial_reverse(text: str) -> str:
 
     result = before + [REVERSE_MARKER] + after_reversed
 
-    return ''.join(result)
+    return ' '.join(result).replace('  ', ' ')
 
 
 def full_reverse(text: str) -> str:
+    text = text.strip()
     token_ids = tokenizer.encode(text)
     tokens = [tokenizer.decode([tid]) for tid in token_ids]
 
@@ -50,12 +54,12 @@ def full_reverse(text: str) -> str:
 
     # Insert 🅁 at a random position
     insert_pos = random.randint(0, len(tokens))
-    tokens.insert(insert_pos, REVERSE_MARKER)
+    tokens.insert(insert_pos, ' '+ REVERSE_MARKER)
 
     # Reverse all tokens
     tokens_reversed = tokens[::-1]
 
-    return ''.join(tokens_reversed)
+    return ' '.join(tokens_reversed).replace('  ', ' ')
 
 
 # Example usage

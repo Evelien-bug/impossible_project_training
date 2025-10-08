@@ -1,8 +1,14 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
 import argparse
 from pathlib import Path
 import torch
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
-
+from tqdm import tqdm
+from utils.reverse import partial_reverse
 
 def get_device():
     if torch.backends.mps.is_available():
@@ -86,9 +92,9 @@ def test_model(model_path, test_examples):
     total_count = len(test_examples)
     prediction = []
     actual = []
-    for i, test_input in enumerate(test_examples, 1):
+    for i, test_input in tqdm(enumerate(test_examples, 1), total=total_count):
         # IMPORTANT: Use the same prompt format as training
-        input_corrupted, input_original = create_test_example(test_input)
+        input_corrupted = partial_reverse(test_input)
         if not input_corrupted:
             continue
         prompt = f"Fix this text: {input_corrupted}\nCorrected:"
@@ -127,13 +133,15 @@ def test_model(model_path, test_examples):
         else:
             corrected = generated
         prediction.append(corrected)
-        actual.append(input_original)
+        actual.append(test_input)
         if test_input.strip() != corrected.strip():
             print(f"Perturbed:\t{input_corrupted}")
             print(f"Prediction:\t{corrected}")
-            print(f"Actual:\t\t{input_original}")
+            print(f"Actual:\t\t{test_input}")
             print(f"Exact match: {exact_match(prediction, actual)}")
             print("-"* 40)
+
+    print(f"Exact match: {exact_match(prediction, actual)}")
 
 
 def main(model_path, dataset_path, mode='auto'):

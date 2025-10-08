@@ -1,3 +1,7 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import json
 from pathlib import Path
 import torch
@@ -10,6 +14,7 @@ from transformers import (
 import yaml
 from datasets import Dataset
 import argparse
+from tqdm import tqdm
 from utils.reverse import partial_reverse
 
 
@@ -59,7 +64,7 @@ def generate_training_data(input_file, marker='🅁'):
     for sentence in sentences:
         example = partial_reverse(sentence)
         if example:
-            training_data.append(example)
+            training_data.append((example, sentences))
 
     return training_data
 
@@ -84,7 +89,7 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
         attention_mask_list = []
         labels_list = []
 
-        for corrupted, correct in data:
+        for corrupted, correct in tqdm(data):
             # INSTRUCTION FORMAT - tells GPT-2 what to do
             full_text = f"Fix this text: {corrupted}\nCorrected: {correct}<|endoftext|>"
 
@@ -128,7 +133,7 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
             'labels': labels_list
         }
 
-    print("Processing training data with masked labels (optimal method)...")
+    print("Processing training data with masked labels...")
     train_processed = process_data(train_data)
     eval_processed = process_data(eval_data)
 
@@ -195,7 +200,7 @@ def main(config, input_file='input_sentences.txt', model_name='gpt2'):
         marker=MARKER)
 
     # Optionally save the dataset
-    save_dataset(training_data, 'training_data.json')
+    # save_dataset(training_data, 'training_data.json')
 
     # Step 2: Prepare tokenizer and datasets with masked labels
     print("\nPreparing datasets...")
