@@ -5,9 +5,9 @@ import yaml
 import matplotlib.pyplot as plt
 import torch
 from datasets import Dataset, DatasetDict, load_from_disk
-from transformers import  GPT2LMHeadModel, GPT2Config, TrainingArguments, Trainer, AddedToken
+from transformers import  GPT2LMHeadModel, GPT2Config, TrainingArguments, Trainer
 
-import utils
+from utils import utils
 
 if torch.backends.mps.is_available():
     device = torch.device("mps")

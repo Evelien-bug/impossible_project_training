@@ -9,7 +9,7 @@ from datasets import Dataset, DatasetDict, load_from_disk
 from peft import LoraConfig, get_peft_model
 from transformers import GPT2LMHeadModel, TrainingArguments, Trainer
 
-import utils
+from utils import utils
 
 mp.set_start_method('spawn', force=True)
 

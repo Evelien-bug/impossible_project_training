@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 import argparse
 
-from utils import perturb_hop_words4, perturb_hop_tokens4, perturb_hop_control, perturb_reverse, \
+from utils.utils import perturb_hop_words4, perturb_hop_tokens4, perturb_hop_control, perturb_reverse, \
     perturb_shuffle_deterministic, perturb_shuffle_local, perturb_shuffle_even_odd
 
 
