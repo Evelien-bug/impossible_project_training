@@ -217,18 +217,14 @@ def main(config, input_file='input_sentences.txt', model_name='gpt2'):
 
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser()
-    #
-    # parser.add_argument('-m', '--model', type=str, required=True,
-    #                     help="Model name or path (e.g., 'gpt2', 'gpt2-medium')")
-    # parser.add_argument('-p', '--path', type=str, required=True,
-    #                     help="Path to input sentences file")
-    # parser.add_argument('-c', '--config', type=str, required=True,
-    #                     help="Path to YAML configuration file")
-    # args = parser.parse_args()
-    # config = load_configs(args.config)
+    parser = argparse.ArgumentParser()
 
-    config = load_configs('/Users/Moham076/PycharmProjects/gpt_noise_elimination/configs/train-mps-configs.yml')
-    path = '/Users/Moham076/PycharmProjects/gpt_noise_elimination/10k_bnc_spoken.train'
-    model = 'mission-impossible-lms/partial-reverse-gpt2'
-    main(config=config, input_file=path, model_name=model)
+    parser.add_argument('-m', '--model', type=str, required=True,
+                        help="Model name or path (e.g., 'gpt2', 'gpt2-medium')")
+    parser.add_argument('-p', '--path', type=str, required=True,
+                        help="Path to input sentences file")
+    parser.add_argument('-c', '--config', type=str, required=True,
+                        help="Path to YAML configuration file")
+    args = parser.parse_args()
+    config = load_configs(args.config)
+
