@@ -1,5 +1,6 @@
 import sys
 import os
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from exact_match import exact_match
@@ -8,7 +9,7 @@ from pathlib import Path
 import torch
 from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from tqdm import tqdm
-from utils.reverse import partial_reverse, partial_reverse_in_batch
+from utils.reverse import partial_reverse_in_batch
 
 
 def get_device():
@@ -83,11 +84,8 @@ def test_model(model_path, test_examples):
     prediction = []
     actual = []
     inputs_corrupted = partial_reverse_in_batch(test_examples, batch_size=512)
-    for  input_corrupted, test_input in tqdm(inputs_corrupted):
-        # IMPORTANT: Use the same prompt format as training
-        # input_corrupted = partial_reverse(test_input)
-        # if not input_corrupted:
-        #     continue
+    for input_corrupted, test_input in tqdm(inputs_corrupted):
+
         if not input_corrupted:
             continue
 
@@ -133,7 +131,7 @@ def test_model(model_path, test_examples):
             print(f"Prediction:\t{corrected}")
             print(f"Actual:\t\t{test_input}")
             print(f"Exact match: {exact_match(prediction, actual)}")
-            print("-"* 40)
+            print("-" * 40)
 
     print(f"Exact match: {exact_match(prediction, actual)}")
 
