@@ -1,9 +1,12 @@
 import sys
 import os
 
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from exact_match import exact_match
+from bleu import bleu_score
+
 import argparse
 from pathlib import Path
 import torch
@@ -11,6 +14,10 @@ from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from tqdm import tqdm
 from utils.reverse import partial_reverse_in_batch
 
+metrics = {
+    'exact_match': exact_match,
+    'BLEU': bleu_score
+}
 
 def get_device():
     if torch.backends.mps.is_available():
@@ -46,7 +53,7 @@ def create_test_example(text, marker='🅁'):
     return corrupted, original
 
 
-def load_test_data(dataset_path, mode='auto', marker='🅁'):
+def load_test_data(dataset_path):
     if not Path(dataset_path).exists():
         raise FileNotFoundError(f"Test data file not found: {dataset_path}")
 
@@ -60,7 +67,7 @@ def load_test_data(dataset_path, mode='auto', marker='🅁'):
     return lines
 
 
-def test_model(model_path, test_examples):
+def test_model(model_path, test_examples, metric):
     # Validate model path
     if not Path(model_path).exists():
         raise FileNotFoundError(f"Model not found at: {model_path}")
@@ -130,22 +137,22 @@ def test_model(model_path, test_examples):
             print(f"Perturbed:\t{input_corrupted}")
             print(f"Prediction:\t{corrected}")
             print(f"Actual:\t\t{test_input}")
-            print(f"Exact match: {exact_match(prediction, actual)}")
+            print(f"{metrics[metric]}: {metrics[metric](prediction, actual)}")
             print("-" * 40)
 
-    print(f"Exact match: {exact_match(prediction, actual)}")
+    print(f"{metrics[metric]}: {metrics[metric](prediction, actual)}")
 
 
-def main(model_path, dataset_path, mode='auto'):
+def main(model_path, dataset_path, metric):
     print("\n" + "=" * 80)
     print("GPT-2 TOKEN REVERSAL - TESTING")
     print("=" * 80)
 
     # Load test data
-    data = load_test_data(dataset_path, mode=mode)
+    data = load_test_data(dataset_path)
 
     # Test model
-    test_model(model_path, data)
+    test_model(model_path, data, metric)
 
 
 if __name__ == '__main__':
@@ -166,14 +173,11 @@ if __name__ == '__main__':
         required=True,
         help="Path to test data file (one example per line)"
     )
-    parser.add_argument(
-        '--mode',
-        type=str,
-        default='auto',
-        choices=['auto', 'corrupted', 'original'],
-        help="Data mode: 'auto' (detect), 'corrupted' (has 🅁), 'original' (will add 🅁)"
-    )
 
+    parser.add_argument("--metric",
+                        type=str,
+                        default="exact_match",
+                        help="Metric to use for evaluation. Default: exact_match. Options: exact_match, BELU")
     args = parser.parse_args()
 
-    main(args.model, args.path, args.mode)
+    main(args.model, args.path, args.metric)
