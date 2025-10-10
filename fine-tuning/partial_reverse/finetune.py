@@ -209,13 +209,13 @@ def main(config, input_file, model_name, type_of_perturbation):
     print(f"Reading sentences from {input_file}...")
     training_data = None
     if not os.path.exists(training_data_path):
-        print(f"{training_data_path} not found.\n Generating training data from {input_file}...")
+        print(f"{os.path.abspath(training_data_path)} not found.\n Generating training data from {input_file}...")
         training_data = generate_training_data(
             input_file=input_file,
             type_of_perturbation=type_of_perturbation)
         save_dataset(training_data, training_data_path)
     else:
-        print(f"Loading training data from {training_data_path}...")
+        print(f"Loading training data from {os.path.abspath(training_data_path)}...")
         with open(training_data_path, 'r', encoding='utf-8') as f:
             training_data = json.load(f)
 
@@ -257,3 +257,7 @@ if __name__ == "__main__":
     config = load_configs(args.config)
 
     main(config=config, input_file=args.path, model_name=args.model, type_of_perturbation=args.type)
+
+
+# training_data_10k_bnc_spoken_wordHop.json
+# training_data_10k_bnc_spoken_wordHOP.json
