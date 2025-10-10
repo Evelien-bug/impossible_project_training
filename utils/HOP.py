@@ -1,8 +1,14 @@
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+import argparse
 from transformers import GPT2Tokenizer
 import spacy
 from typing import List
 from multiprocessing import Pool, cpu_count
-from tqdm import tqdm
+from pathlib import Path
+import json
 
 tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 nlp = spacy.load("en_core_web_trf")
@@ -170,8 +176,9 @@ def wordhop(text: str) -> str:
 
 
 def _wordhop_batch(texts: List[str]) -> List[str]:
+
+    docs = list(nlp.pipe(texts))
     results = []
-    docs = list(tqdm(nlp.pipe(texts), total=len(texts), desc="Processing with spaCy"))
 
     for text, doc in zip(texts, docs):
         tokens = list(doc)
@@ -217,6 +224,7 @@ def _process_chunk_wordhop_batched(args):
     return results
 
 def wordhop_fast(texts: List[str], batch_size: int = 32, n_workers: int = None) -> List[str]:
+
     if n_workers is None:
         n_workers = max(1, cpu_count() - 1)
 
@@ -227,12 +235,7 @@ def wordhop_fast(texts: List[str], batch_size: int = 32, n_workers: int = None) 
     chunk_args = [(chunk, batch_size) for chunk in chunks]
 
     with Pool(n_workers) as pool:
-        # Use imap for progress tracking
-        results_nested = list(tqdm(
-            pool.imap(_process_chunk_wordhop_batched, chunk_args),
-            total=len(chunk_args),
-            desc="Processing chunks"
-        ))
+        results_nested = pool.map(_process_chunk_wordhop_batched, chunk_args)
 
     results = []
     for chunk_results in results_nested:
@@ -240,12 +243,10 @@ def wordhop_fast(texts: List[str], batch_size: int = 32, n_workers: int = None) 
 
     return results
 
-
 def wordhop_batch(texts: List[str], batch_size: int = 32, n_workers: int = None) -> List[tuple]:
     originals = [t.strip() for t in texts]
     corrupted = wordhop_fast(texts, batch_size, n_workers)
     return list(zip(corrupted, originals))
-
 
 def is_3rd_person_present_verb(token) -> bool:
     # Check for present tense verbs
@@ -266,39 +267,80 @@ def is_singular_verb(token) -> bool:
         return True
     return False
 
+def load_sentences_from_file(input_file):
+    sentences = []
+
+    if not Path(input_file).exists():
+        raise FileNotFoundError(f"Input file not found: {input_file}")
+
+    with open(input_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line and len(line.split()) >= 3:  # Must have at least 3 tokens
+                sentences.append(line)
+
+    if not sentences:
+        raise ValueError(f"No valid sentences found in {input_file}")
+
+    print(f"Loaded {len(sentences)} sentences from {input_file}")
+    return sentences
+
+
+def generate_training_data(input_file):
+    print("Generating training data...")
+    sentences = load_sentences_from_file(input_file)
+    training_data = wordhop_batch(sentences, 512)
+    return training_data
+
+def save_dataset(data, output_file):
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    print(f"Saved {len(data)} examples to {output_file}")
+
+
+def pre_process(input_file, training_data_path):
+    training_data = generate_training_data(
+        input_file=input_file)
+    save_dataset(training_data, training_data_path)
 
 if __name__ == "__main__":
     # Example sentences
-    text1 = "He cleans his very messy bookshelf."
-    text2 = "They clean their very messy bookshelf."
-    text3 = "She walks to the store and buys some milk."
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--input', type=str, required=True,)
 
-    print("=" * 60)
-    print("Example 1:")
-    print("Original: ", text1)
-    print("NOHOP:    ", nohop(text1))
-    print("TOKENHOP: ", tokenhop(text1))
-    print("WORDHOP:  ", wordhop(text1))
+    args = parser.parse_args()
 
-    print("\n" + "=" * 60)
-    print("Example 2:")
-    print("Original: ", text2)
-    print("NOHOP:    ", nohop(text2))
-    print("TOKENHOP: ", tokenhop(text2))
-    print("WORDHOP:  ", wordhop(text2))
-
-    print("\n" + "=" * 60)
-    print("Example 3:")
-    print("Original: ", text3)
-    print("NOHOP:    ", nohop(text3))
-    print("TOKENHOP: ", tokenhop(text3))
-    print("WORDHOP:  ", wordhop(text3))
-
-    # Multi-sentence example
-    print("\n" + "=" * 60)
-    print("Multi-sentence example:")
-    text4 = "He walks quickly. She runs faster. They play together."
-    print("Original: ", text4)
-    print("NOHOP:    ", nohop(text4))
-    print("TOKENHOP: ", tokenhop(text4))
-    print("WORDHOP:  ", wordhop(text4))
+    pre_process(args.input, 'wordhop_1k_test.json')
+    # text1 = "He cleans his very messy bookshelf."
+    # text2 = "They clean their very messy bookshelf."
+    # text3 = "She walks to the store and buys some milk."
+    #
+    # print("=" * 60)
+    # print("Example 1:")
+    # print("Original: ", text1)
+    # print("NOHOP:    ", nohop(text1))
+    # print("TOKENHOP: ", tokenhop(text1))
+    # print("WORDHOP:  ", wordhop(text1))
+    #
+    # print("\n" + "=" * 60)
+    # print("Example 2:")
+    # print("Original: ", text2)
+    # print("NOHOP:    ", nohop(text2))
+    # print("TOKENHOP: ", tokenhop(text2))
+    # print("WORDHOP:  ", wordhop(text2))
+    #
+    # print("\n" + "=" * 60)
+    # print("Example 3:")
+    # print("Original: ", text3)
+    # print("NOHOP:    ", nohop(text3))
+    # print("TOKENHOP: ", tokenhop(text3))
+    # print("WORDHOP:  ", wordhop(text3))
+    #
+    # # Multi-sentence example
+    # print("\n" + "=" * 60)
+    # print("Multi-sentence example:")
+    # text4 = "He walks quickly. She runs faster. They play together."
+    # print("Original: ", text4)
+    # print("NOHOP:    ", nohop(text4))
+    # print("TOKENHOP: ", tokenhop(text4))
+    # print("WORDHOP:  ", wordhop(text4))
