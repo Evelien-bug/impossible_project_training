@@ -232,7 +232,7 @@ def _wordhop_batch(texts: List[str]) -> List[str]:
 def _process_chunk_wordhop_batched(args):
     chunk, batch_size = args
     results = []
-    for i in range(0, len(chunk), batch_size):
+    for i in tqdm(range(0, len(chunk), batch_size)):
         batch = chunk[i:i + batch_size]
         results.extend(_wordhop_batch(batch))
     return results
@@ -252,7 +252,7 @@ def wordhop_fast(texts: List[str], batch_size: int = 32, n_workers: int = None) 
         results_nested = pool.map(_process_chunk_wordhop_batched, chunk_args)
 
     results = []
-    for chunk_results in results_nested:
+    for chunk_results in tqdm(results_nested):
         results.extend(chunk_results)
 
     return results
@@ -315,8 +315,9 @@ def save_dataset(data, output_file):
 def pre_process(input_file, training_data_path):
     training_data = []
     sentences = load_sentences_from_file(input_file)
-    for sentence in tqdm(sentences):
-        training_data.append((wordhop(sentence), sentence))
+    # for sentence in tqdm(sentences):
+    #     training_data.append((wordhop(sentence), sentence))
+    training_data = wordhop_batch(sentences, 16)
     save_dataset(training_data, training_data_path)
 
 if __name__ == "__main__":
