@@ -1,7 +1,6 @@
 import sys
 import os
 
-
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 from pathlib import Path
 import torch
@@ -11,6 +10,7 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
+import json
 import yaml
 from datasets import Dataset
 import argparse
@@ -69,6 +69,11 @@ def generate_training_data(input_file, type_of_perturbation):
     sentences = load_sentences_from_file(input_file)
     training_data = functions[type_of_perturbation](sentences, 512)
     return training_data
+
+def save_dataset(data, output_file):
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+    print(f"Saved {len(data)} examples to {output_file}")
 
 def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
     # Split into train and eval
@@ -198,12 +203,20 @@ def main(config, input_file, model_name, type_of_perturbation):
     OUTPUT_DIR = config.get('training_arguments', {}).get('output_dir', None)
     if not OUTPUT_DIR:
         raise ValueError("Output directory must be specified in training_arguments.output_dir")
+    training_data_path = f"training_data_{os.path.basename(input_file).split('.')[0]}_{type_of_perturbation}.json"
 
     # Generate training data from input file
     print(f"Reading sentences from {input_file}...")
-    training_data = generate_training_data(
-        input_file=input_file,
-        type_of_perturbation=type_of_perturbation)
+    training_data = None
+    if not os.path.exists(training_data_path):
+        training_data = generate_training_data(
+            input_file=input_file,
+            type_of_perturbation=type_of_perturbation)
+        save_dataset(training_data, training_data_path)
+    else:
+        print(f"Loading training data from {training_data_path}...")
+        with open(training_data_path, 'r', encoding='utf-8') as f:
+            training_data = json.load(f)
 
     # Prepare tokenizer and datasets with masked labels
     print("\nPreparing datasets...")
