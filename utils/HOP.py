@@ -9,6 +9,7 @@ from typing import List
 from multiprocessing import Pool, cpu_count
 from pathlib import Path
 import json
+from tqdm import tqdm
 
 tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
 nlp = spacy.load("en_core_web_trf")
@@ -227,7 +228,7 @@ def wordhop_fast(texts: List[str], batch_size: int = 32, n_workers: int = None) 
 
     if n_workers is None:
         n_workers = max(1, cpu_count() - 1)
-
+    print(f"Using {n_workers} workers")
     if len(texts) < 100:
         return _wordhop_batch(texts)
 
@@ -299,8 +300,10 @@ def save_dataset(data, output_file):
 
 
 def pre_process(input_file, training_data_path):
-    training_data = generate_training_data(
-        input_file=input_file)
+    training_data = []
+    sentences = load_sentences_from_file(input_file)
+    for sentence in tqdm(sentences):
+        training_data.append((wordhop(sentence), sentence))
     save_dataset(training_data, training_data_path)
 
 if __name__ == "__main__":
