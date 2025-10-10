@@ -203,7 +203,7 @@ def main(config, input_file, model_name, type_of_perturbation):
     OUTPUT_DIR = config.get('training_arguments', {}).get('output_dir', None)
     if not OUTPUT_DIR:
         raise ValueError("Output directory must be specified in training_arguments.output_dir")
-    training_data_path = f"./training_data_{os.path.basename(input_file).split('.')[0]}_{type_of_perturbation}.json"
+    training_data_path = f"./training_data_{input_file.split('/')[-1].split('.')[0]}_{type_of_perturbation}.json"
 
     # Generate training data from input file
     print(f"Reading sentences from {input_file}...")
