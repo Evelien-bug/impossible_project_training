@@ -209,6 +209,7 @@ def main(config, input_file, model_name, type_of_perturbation):
     print(f"Reading sentences from {input_file}...")
     training_data = None
     if not os.path.exists(training_data_path):
+        print(f"{training_data_path} not found.\n Generating training data from {input_file}...")
         training_data = generate_training_data(
             input_file=input_file,
             type_of_perturbation=type_of_perturbation)
