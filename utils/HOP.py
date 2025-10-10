@@ -327,7 +327,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    pre_process(args.input, f'training_data_{os.path.basename(args.input).split('.')[0]}_wordHOP.json')
+    pre_process(args.input, f"training_data_{os.path.basename(args.input).split('.')[0]}_wordHOP.json")
     # text1 = "He cleans his very messy bookshelf."
     # text2 = "They clean their very messy bookshelf."
     # text3 = "She walks to the store and buys some milk."
