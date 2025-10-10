@@ -76,7 +76,7 @@ def nohop(text: str) -> str:
 
         if verb_found:
             # Replace with lemma and add marker
-            result.append(token.replace(token_clean, verb_found['lemma']))
+            result.append(token.replace(token_clean, ' '+verb_found['lemma']))
             result.append(' ' + verb_found['marker'])
         else:
             result.append(token)
@@ -130,7 +130,7 @@ def tokenhop(text: str) -> str:
                 break
 
         if verb_found:
-            result.append(token.replace(token_clean, verb_found['lemma']))
+            result.append(token.replace(token_clean, ' '+verb_found['lemma']))
             # Schedule marker 4 tokens later
             insert_pos = i + 4
             pending_markers[insert_pos] = verb_found['marker']
@@ -165,7 +165,7 @@ def wordhop(text: str) -> str:
 
         if is_3rd_person_present_verb(token):
             # Use spaCy's lemma
-            result.append(token.lemma_)
+            result.append(' ' + token.lemma_)
             # Schedule marker to be inserted 4 words after this verb
             marker = SINGULAR_MARKER if is_singular_verb(token) else PLURAL_MARKER
             target_wc = word_count + 4 + (1 if not token.is_punct else 0)
@@ -208,7 +208,7 @@ def _wordhop_batch(texts: List[str]) -> List[str]:
             pending_markers = [(wc, m) for wc, m in pending_markers if wc != word_count]
 
             if is_3rd_person_present_verb(token):
-                result.append(token.lemma_)
+                result.append(' '+ token.lemma_)
                 marker = SINGULAR_MARKER if is_singular_verb(token) else PLURAL_MARKER
                 target_wc = word_count + 4 + (1 if not token.is_punct else 0)
                 pending_markers.append((target_wc, ' ' + marker))
@@ -326,7 +326,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    pre_process(args.input, 'wordhop_1k_test.json')
+    pre_process(args.input, f'training_data_{os.path.basename(args.input).split('.')[0]}_wordHOP.json')
     # text1 = "He cleans his very messy bookshelf."
     # text2 = "They clean their very messy bookshelf."
     # text3 = "She walks to the store and buys some milk."
