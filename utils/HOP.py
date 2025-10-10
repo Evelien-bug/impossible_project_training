@@ -3,7 +3,7 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import argparse
-from transformers import GPT2Tokenizer
+from transformers import GPT2Tokenizer, AddedToken
 import spacy
 from typing import List
 from multiprocessing import Pool, cpu_count
@@ -11,10 +11,23 @@ from pathlib import Path
 import json
 from tqdm import tqdm
 
-tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+def tokenizer_with_markers():
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    marker_list = [SINGULAR_MARKER, PLURAL_MARKER]
+    if len(marker_list) == 0:
+        return tokenizer
+
+    new_tokens = []
+    for marker in marker_list:
+        new_tokens.append(AddedToken(marker, lstrip=True, rstrip=False))
+    tokenizer.add_tokens(new_tokens)
+    return tokenizer
 nlp = spacy.load("en_core_web_trf")
 SINGULAR_MARKER = '🅂'
 PLURAL_MARKER = '🄿'
+
+tokenizer = tokenizer_with_markers()
 
 
 def _chunk_list(lst: List, n_chunks: int) -> List[List]:
