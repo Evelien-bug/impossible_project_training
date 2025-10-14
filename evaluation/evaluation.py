@@ -267,7 +267,7 @@ def save_results(results, output_file):
 
 
 def main(model_path, dataset_path, metric, type_of_perturbation):
-    test_data_path = f"./test_data_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_{metric}.json"
+    test_data_path = f"./test_data_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}.json"
 
     # Generate training data from input file
     print(f"Reading sentences from {dataset_path}...")
@@ -299,7 +299,7 @@ def main(model_path, dataset_path, metric, type_of_perturbation):
     results['final'] = test_model(model_path, test_examples, metric)
 
     # Save results
-    output_file = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_{metric}.json"
+    output_file = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}.json"
     save_results(results, output_file)
 
     print(f"\n{'=' * 80}")
