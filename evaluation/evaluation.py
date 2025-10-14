@@ -197,6 +197,7 @@ def main(model_path, dataset_path, metric, type_of_perturbation):
             test_examples = json.load(f)
     results = {}
     for checkpoint_dir in get_checkpoints_sorted(model_path):
+        print(f"Evaluating model from checkpoint: {checkpoint_dir}")
         checkpoint = os.path.basename(checkpoint_dir)
         results[checkpoint] = test_model(model_path, test_examples, metric)
     results['final'] = test_model(model_path, test_examples, metric)
