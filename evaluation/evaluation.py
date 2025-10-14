@@ -107,80 +107,106 @@ def split_into_chunks(text, tokenizer, max_chunk_size=800, overlap=100):
 
 
 def merge_chunks(chunks, overlap, tokenizer):
-    if len(chunks) <= 1:
-        return chunks[0] if chunks else ""
+    if not chunks:
+        return ""
 
-    result = chunks[0]
-    for i in range(1, len(chunks)):
+    if len(chunks) <= 1:
+        return chunks[0] if chunks[0] is not None else ""
+
+    # Filter out None values
+    valid_chunks = [chunk for chunk in chunks if chunk is not None and chunk != ""]
+
+    if not valid_chunks:
+        return ""
+
+    result = valid_chunks[0]
+    for i in range(1, len(valid_chunks)):
         # Simple merge: add next chunk with space
-        result = result.rstrip() + " " + chunks[i].lstrip()
+        result = result.rstrip() + " " + valid_chunks[i].lstrip()
 
     return result
 
 
 def process_single_chunk(input_text, tokenizer, model, max_position_embeddings):
-    prompt = f"Fix this text: {input_text}\nCorrected:"
+    try:
+        prompt = f"Fix this text: {input_text}\nCorrected:"
 
-    prompt_encoding = tokenizer(prompt, return_tensors="pt")
-    input_ids = prompt_encoding['input_ids'].to(DEVICE)
-    attention_mask = prompt_encoding['attention_mask'].to(DEVICE)
+        prompt_encoding = tokenizer(prompt, return_tensors="pt")
+        input_ids = prompt_encoding['input_ids'].to(DEVICE)
+        attention_mask = prompt_encoding['attention_mask'].to(DEVICE)
 
-    input_tokens = tokenizer.encode(input_text)
-    input_length = prompt_encoding['input_ids'].shape[1]
+        input_tokens = tokenizer.encode(input_text)
+        input_length = prompt_encoding['input_ids'].shape[1]
 
-    max_new_tokens = min(len(input_tokens) + 5, max_position_embeddings - input_length)
-    min_new_tokens = max(1, len(input_tokens) - 5)
+        max_new_tokens = min(len(input_tokens) + 5, max_position_embeddings - input_length)
+        min_new_tokens = max(1, len(input_tokens) - 5)
 
-    with torch.no_grad():
-        output = model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_new_tokens=max_new_tokens,
-            min_new_tokens=min_new_tokens,
-            temperature=0.3,
-            do_sample=True,
-            pad_token_id=tokenizer.eos_token_id,
-            eos_token_id=tokenizer.eos_token_id,
-        )
+        with torch.no_grad():
+            output = model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_new_tokens=max_new_tokens,
+                min_new_tokens=min_new_tokens,
+                temperature=0.3,
+                do_sample=True,
+                pad_token_id=tokenizer.eos_token_id,
+                eos_token_id=tokenizer.eos_token_id,
+            )
 
-    generated = tokenizer.decode(output[0], skip_special_tokens=True)
+        generated = tokenizer.decode(output[0], skip_special_tokens=True)
 
-    if "Corrected:" in generated:
-        corrected = generated.split("Corrected:")[1].strip()
-    else:
-        corrected = generated
+        if "Corrected:" in generated:
+            corrected = generated.split("Corrected:")[1].strip()
+        else:
+            corrected = generated.strip()
 
-    return corrected
+        # Return empty string instead of None if corrected is empty
+        return corrected if corrected else ""
+
+    except Exception as e:
+        print(f"\nError in process_single_chunk: {e}")
+        return ""
 
 
 def process_long_text(input_corrupted, tokenizer, model, max_position_embeddings):
-    # Check if we need chunking
-    input_tokens = tokenizer.encode(input_corrupted)
-    prompt_template = "Fix this text: {}\nCorrected:"
 
-    # Estimate prompt overhead
-    prompt_overhead = len(tokenizer.encode(prompt_template.format("")))
-    max_input_size = max_position_embeddings - prompt_overhead - 50  # Leave room for generation
+    try:
+        # Check if we need chunking
+        input_tokens = tokenizer.encode(input_corrupted)
+        prompt_template = "Fix this text: {}\nCorrected:"
 
-    if len(input_tokens) <= max_input_size:
-        # Process normally
-        return process_single_chunk(input_corrupted, tokenizer, model, max_position_embeddings)
+        # Estimate prompt overhead
+        prompt_overhead = len(tokenizer.encode(prompt_template.format("")))
+        max_input_size = max_position_embeddings - prompt_overhead - 50  # Leave room for generation
 
-    # Split into chunks
-    print(f"\n  Text too long ({len(input_tokens)} tokens), splitting into chunks...")
-    chunks = split_into_chunks(input_corrupted, tokenizer, max_chunk_size=max_input_size, overlap=100)
+        if len(input_tokens) <= max_input_size:
+            # Process normally
+            return process_single_chunk(input_corrupted, tokenizer, model, max_position_embeddings)
 
-    corrected_chunks = []
-    for i, chunk in enumerate(chunks):
-        print(f"  Processing chunk {i + 1}/{len(chunks)}...")
-        corrected = process_single_chunk(chunk['text'], tokenizer, model, max_position_embeddings)
-        corrected_chunks.append(corrected)
+        # Split into chunks
+        print(f"\n  Text too long ({len(input_tokens)} tokens), splitting into chunks...")
+        chunks = split_into_chunks(input_corrupted, tokenizer, max_chunk_size=max_input_size, overlap=100)
 
-    # Merge chunks
-    merged = merge_chunks(corrected_chunks, overlap=100, tokenizer=tokenizer)
-    print(f"  Merged {len(chunks)} chunks into final output")
+        corrected_chunks = []
+        for i, chunk in enumerate(chunks):
+            print(f"  Processing chunk {i + 1}/{len(chunks)}...")
+            corrected = process_single_chunk(chunk['text'], tokenizer, model, max_position_embeddings)
+            # Only append if we got valid output
+            if corrected:
+                corrected_chunks.append(corrected)
 
-    return merged
+        # Merge chunks
+        if not corrected_chunks:
+            return ""
+
+        merged = merge_chunks(corrected_chunks, overlap=100, tokenizer=tokenizer)
+        print(f"  Merged {len(corrected_chunks)} chunks into final output")
+
+        return merged if merged else ""
+
+    except Exception as e:
+        print(f"\nError in process_long_text: {e}")
+        return ""
 
 
 def test_model(model_path, test_examples):
@@ -224,9 +250,6 @@ def test_model(model_path, test_examples):
 
                 prediction.append(corrected)
                 actual.append(test_input)
-                exact_match_accuracy = exact_match(prediction, actual)
-                bleu_score_accuracy = bleu_score(prediction, actual)
-                pbar.set_description(f"EM:{exact_match_accuracy:.4f}, BLEU:{bleu_score_accuracy:.4f}")
 
             except Exception as e:
                 print(f"\nError processing example: {e}")
@@ -236,10 +259,10 @@ def test_model(model_path, test_examples):
                 continue
 
             # Update progress bar with current metrics
-            # if len(prediction) > 0:
-            #     exact_match_accuracy = exact_match(prediction, actual)
-            #     bleu_score_accuracy = bleu_score(prediction, actual)
-            #     pbar.set_description(f"EM:{exact_match_accuracy:.4f}, BLEU:{bleu_score_accuracy:.4f}")
+            if len(prediction) > 0:
+                exact_match_accuracy = exact_match(prediction, actual)
+                bleu_score_accuracy = bleu_score(prediction, actual)
+                pbar.set_description(f"EM:{exact_match_accuracy:.4f}, BLEU:{bleu_score_accuracy:.4f}")
 
     # Calculate final metrics
     final_exact_match_accuracy = exact_match(prediction, actual)
