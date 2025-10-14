@@ -2,7 +2,7 @@ import sys
 import os
 
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from pathlib import Path
 import torch
 from transformers import (
@@ -259,7 +259,3 @@ if __name__ == "__main__":
     config = load_configs(args.config)
 
     main(config=config, input_file=args.path, model_name=args.model, type_of_perturbation=args.type)
-
-
-# training_data_10k_bnc_spoken_wordHop.json
-# training_data_10k_bnc_spoken_wordHOP.json

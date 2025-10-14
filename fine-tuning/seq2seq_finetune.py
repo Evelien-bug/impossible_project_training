@@ -235,7 +235,10 @@ if __name__ == "__main__":
                         help="Path to input sentences file")
     parser.add_argument('-c', '--config', type=str, required=True,
                         help="Path to YAML configuration file")
+    parser.add_argument('-t', '--type', type=str, required=True,
+                        help="Type of perturbation (wordHop, partialReverse, localShuffle, etc.)")
+
     args = parser.parse_args()
     config = load_configs(args.config)
 
-    main(config=config, input_file=args.path, model_name=args.model)
+    main(config=config, input_file=args.path, model_name=args.model, type_of_perturbation=args.type)
