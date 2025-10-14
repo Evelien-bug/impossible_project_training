@@ -108,48 +108,51 @@ def test_model(model_path, test_examples, metric):
     total_count = len(test_examples)
     prediction = []
     actual = []
-    for input_corrupted, test_input in tqdm(test_examples, total=total_count, desc=metrics[metric](prediction, actual)):
+    with tqdm(test_examples, total=total_count) as pbar:
+        for input_corrupted, test_input in pbar:
 
-        if not input_corrupted:
-            continue
+            if not input_corrupted:
+                continue
 
-        prompt = f"Fix this text: {input_corrupted}\nCorrected:"
+            prompt = f"Fix this text: {input_corrupted}\nCorrected:"
 
-        # Tokenize input
-        input_tokens = tokenizer.encode(input_corrupted)
-        prompt_encoding = tokenizer(prompt, return_tensors="pt")
+            # Tokenize input
+            input_tokens = tokenizer.encode(input_corrupted)
+            prompt_encoding = tokenizer(prompt, return_tensors="pt")
 
-        # Move input to device
-        input_ids = prompt_encoding['input_ids'].to(DEVICE)
-        attention_mask = prompt_encoding['attention_mask'].to(DEVICE)
+            # Move input to device
+            input_ids = prompt_encoding['input_ids'].to(DEVICE)
+            attention_mask = prompt_encoding['attention_mask'].to(DEVICE)
 
-        # Calculate max_new_tokens strictly
-        max_new_tokens = len(input_tokens) + 5
-        min_new_tokens = max(1, len(input_tokens) - 5)
+            # Calculate max_new_tokens strictly
+            max_new_tokens = len(input_tokens) + 5
+            min_new_tokens = max(1, len(input_tokens) - 5)
 
-        # Generate
-        with torch.no_grad():
-            output = model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                max_new_tokens=max_new_tokens,
-                min_new_tokens=min_new_tokens,
-                temperature=0.3,
-                do_sample=True,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,
-            )
+            # Generate
+            with torch.no_grad():
+                output = model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    max_new_tokens=max_new_tokens,
+                    min_new_tokens=min_new_tokens,
+                    temperature=0.3,
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
+                )
 
-        # Decode output
-        generated = tokenizer.decode(output[0], skip_special_tokens=True)
+            # Decode output
+            generated = tokenizer.decode(output[0], skip_special_tokens=True)
 
-        # Extract just the corrected part
-        if "Corrected:" in generated:
-            corrected = generated.split("Corrected:")[1].strip()
-        else:
-            corrected = generated
-        prediction.append(corrected)
-        actual.append(test_input)
+            # Extract just the corrected part
+            if "Corrected:" in generated:
+                corrected = generated.split("Corrected:")[1].strip()
+            else:
+                corrected = generated
+            prediction.append(corrected)
+            actual.append(test_input)
+            accuracy = metrics[metric](prediction, actual)
+            pbar.set_description(f"Accuracy: {accuracy:.4f}")
 
     print(f"model:{model_path} {metrics[metric]}: {metrics[metric](prediction, actual)}")
     return metrics[metric](prediction, actual)
@@ -176,20 +179,21 @@ def save_results(results, output_file):
 
 
 def main(model_path, dataset_path, metric, type_of_perturbation):
-    training_data_path = f"./test_data_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_{metric}.json"
+    test_data_path = f"./test_data_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_{metric}.json"
 
     # Generate training data from input file
     print(f"Reading sentences from {dataset_path}...")
     test_examples = None
-    if not Path(training_data_path).exists():
-        print(f"{Path(training_data_path).resolve()} not found.\n Generating training data from {dataset_path}...")
-        training_data = generate_test_data(
+
+    if not Path(test_data_path).exists():
+        print(f"{Path(test_data_path).resolve()} not found.\n Generating training data from {dataset_path}...")
+        test_examples = generate_test_data(
             input_file=dataset_path,
             type_of_perturbation=type_of_perturbation)
-        save_dataset(training_data, training_data_path)
+        save_dataset(test_examples, test_data_path)
     else:
-        print(f"Loading training data from {Path(training_data_path).resolve()}...")
-        with open(training_data_path, 'r', encoding='utf-8') as f:
+        print(f"Loading training data from {Path(test_data_path).resolve()}...")
+        with open(test_data_path, 'r', encoding='utf-8') as f:
             test_examples = json.load(f)
     results = {}
     for checkpoint_dir in get_checkpoints_sorted(model_path):

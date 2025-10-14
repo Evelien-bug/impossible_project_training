@@ -2,6 +2,7 @@ from transformers import GPT2Tokenizer
 import random
 from multiprocessing import Pool, cpu_count
 from typing import List
+from tqdm import tqdm
 
 tokenizer = None
 
@@ -131,9 +132,14 @@ def partial_reverse_fast(texts: List[str], batch_size: int = 128, n_workers: int
     return results
 
 def partial_reverse_batch(texts: List[str], batch_size: int = 128, n_workers: int = None) -> List[tuple]:
-    originals = [t.strip() for t in texts]
-    corrupted = partial_reverse_fast(texts, batch_size, n_workers)
-    return list(zip(corrupted, originals))
+
+    results = []
+    for text in tqdm(texts):
+        results.append((partial_reverse(text), text))
+    return results
+    # originals = [t.strip() for t in texts]
+    # corrupted = partial_reverse_fast(texts, batch_size, n_workers)
+    # return list(zip(corrupted, originals))
 
 
 # Example usage
