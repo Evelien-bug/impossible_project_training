@@ -78,10 +78,10 @@ def load_sentences_from_file(input_file):
 
 
 def generate_test_data(input_file, type_of_perturbation):
-    print("Generating training data...")
+    print("Generating test data...")
     sentences = load_sentences_from_file(input_file)
-    training_data = functions[type_of_perturbation](sentences, 512)
-    return training_data
+    test_data = functions[type_of_perturbation](sentences, 512)
+    return test_data
 
 
 def split_into_chunks(text, tokenizer, max_chunk_size=800, overlap=100):
@@ -207,46 +207,53 @@ def test_model(model_path, test_examples):
     prediction = []
     actual = []
 
-    with tqdm(test_examples, total=total_count) as pbar:
+    with tqdm(test_examples, total=total_count, desc="Processing") as pbar:
         for input_corrupted, test_input in pbar:
 
             if not input_corrupted:
                 continue
 
-            # try:
-            # Process with chunking if needed
-            corrected = process_long_text(
-                input_corrupted,
-                tokenizer,
-                model,
-                max_position_embeddings
-            )
+            try:
+                # Process with chunking if needed
+                corrected = process_long_text(
+                    input_corrupted,
+                    tokenizer,
+                    model,
+                    max_position_embeddings
+                )
 
-            prediction.append(corrected)
-            actual.append(test_input)
+                prediction.append(corrected)
+                actual.append(test_input)
+                exact_match_accuracy = exact_match(prediction, actual)
+                bleu_score_accuracy = bleu_score(prediction, actual)
+                pbar.set_description(f"EM:{exact_match_accuracy:.4f}, BLEU:{bleu_score_accuracy:.4f}")
 
-        # except Exception as e:
-        #     print(f"\nError processing example: {e}")
-        #     print(f"Input length: {len(tokenizer.encode(input_corrupted))} tokens")
-        #     prediction.append("")
-        #     actual.append(test_input)
-        #     continue
+            except Exception as e:
+                print(f"\nError processing example: {e}")
+                print(f"Input length: {len(tokenizer.encode(input_corrupted))} tokens")
+                prediction.append("")
+                actual.append(test_input)
+                continue
 
-            exact_match_accuracy = exact_match(prediction, actual)
-            bleu_score_accuracy = bleu_score(prediction, actual)
+            # Update progress bar with current metrics
+            # if len(prediction) > 0:
+            #     exact_match_accuracy = exact_match(prediction, actual)
+            #     bleu_score_accuracy = bleu_score(prediction, actual)
+            #     pbar.set_description(f"EM:{exact_match_accuracy:.4f}, BLEU:{bleu_score_accuracy:.4f}")
 
-            pbar.set_description(f"EM:{exact_match_accuracy:.4f}, BLEU:{bleu_score_accuracy:.4f}")
-
-
+    # Calculate final metrics
     final_exact_match_accuracy = exact_match(prediction, actual)
     final_bleu_score_accuracy = bleu_score(prediction, actual)
-    print(f"\nmodel: {model_path}")
-    print(f"EM: {final_exact_match_accuracy}")
-    print(f"BLEU: {final_bleu_score_accuracy}")
+
+    print(f"\nResults for {model_path}:")
+    print(f"  Exact Match: {final_exact_match_accuracy:.4f}")
+    print(f"  BLEU Score:  {final_bleu_score_accuracy:.4f}")
+
     return final_exact_match_accuracy, final_bleu_score_accuracy
 
 
 def get_checkpoints_sorted(path):
+    """Get all checkpoint directories sorted by creation time."""
     # Ensure path exists
     if not os.path.isdir(path):
         raise ValueError(f"Path does not exist or is not a directory: {path}")
@@ -254,7 +261,7 @@ def get_checkpoints_sorted(path):
     # Find all dirs matching the pattern checkpoint*
     checkpoint_dirs = [d for d in glob.glob(os.path.join(path, "checkpoint*")) if os.path.isdir(d)]
 
-    # Sort by creation time (Oldest first)
+    # Sort by creation time (oldest first for training progression)
     checkpoint_dirs.sort(key=lambda d: os.path.getctime(d), reverse=False)
 
     return checkpoint_dirs
@@ -263,7 +270,7 @@ def get_checkpoints_sorted(path):
 def save_results(results, output_file):
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
-    print(f"Saved results to {output_file}")
+    print(f"\nResults saved to: {output_file}")
 
 
 def main(model_path, dataset_path, type_of_perturbation):
@@ -274,21 +281,25 @@ def main(model_path, dataset_path, type_of_perturbation):
     test_examples = None
 
     if not Path(test_data_path).exists():
-        print(f"{Path(test_data_path).resolve()} not found.\nGenerating training data from {dataset_path}...")
+        print(f"{Path(test_data_path).resolve()} not found.")
+        print(f"Generating test data from {dataset_path}...")
         test_examples = generate_test_data(
             input_file=dataset_path,
             type_of_perturbation=type_of_perturbation)
         save_dataset(test_examples, test_data_path)
     else:
-        print(f"Loading training data from {Path(test_data_path).resolve()}...")
+        print(f"Loading test data from {Path(test_data_path).resolve()}...")
         with open(test_data_path, 'r', encoding='utf-8') as f:
             test_examples = json.load(f)
+
+    print(f"Total test examples: {len(test_examples)}")
 
     results = {}
 
     # Evaluate all checkpoints
     checkpoints = get_checkpoints_sorted(model_path)
     if checkpoints:
+        print(f"\nFound {len(checkpoints)} checkpoints to evaluate")
         for checkpoint_dir in checkpoints:
             print(f"\n{'=' * 80}")
             print(f"Evaluating checkpoint: {os.path.basename(checkpoint_dir)}")
@@ -296,7 +307,13 @@ def main(model_path, dataset_path, type_of_perturbation):
             checkpoint = os.path.basename(checkpoint_dir)
             em, bleu = test_model(checkpoint_dir, test_examples)
             results[checkpoint] = {"EM": em, "BLEU": bleu}
+    else:
+        print("\nNo checkpoints found, evaluating final model only")
 
+    # Evaluate final model
+    print(f"\n{'=' * 80}")
+    print(f"Evaluating final model")
+    print(f"{'=' * 80}")
     em, bleu = test_model(model_path, test_examples)
     results['final'] = {"EM": em, "BLEU": bleu}
 
@@ -304,11 +321,13 @@ def main(model_path, dataset_path, type_of_perturbation):
     output_file = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}.json"
     save_results(results, output_file)
 
+    # Print summary
     print(f"\n{'=' * 80}")
     print("EVALUATION SUMMARY")
     print(f"{'=' * 80}")
     for key, value in results.items():
-        print(f"{key}: {value:.4f}")
+        print(f"{key:20s} | EM: {value['EM']:.4f} | BLEU: {value['BLEU']:.4f}")
+    print(f"{'=' * 80}\n")
 
 
 if __name__ == '__main__':
