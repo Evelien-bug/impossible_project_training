@@ -1,6 +1,7 @@
 import sys
 import os
 import glob
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from exact_match import exact_match
@@ -10,7 +11,7 @@ import json
 import argparse
 from pathlib import Path
 import torch
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
+from transformers import GPT2Tokenizer, GPT2LMHeadModel, AddedToken
 from tqdm import tqdm
 from utils.reverse import partial_reverse_batch
 from utils.HOP import wordhop_batch
@@ -39,7 +40,21 @@ def get_device():
     return device
 
 
+def _init_tokenizer_with_markers(marker_list):
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+
+    if len(marker_list) == 0:
+        return tokenizer
+
+    new_tokens = []
+    for marker in marker_list:
+        new_tokens.append(AddedToken(marker, lstrip=True, rstrip=False))
+    tokenizer.add_tokens(new_tokens)
+    return tokenizer
+
+
 DEVICE = get_device()
+
 
 def load_test_data(dataset_path):
     if not Path(dataset_path).exists():
@@ -54,10 +69,12 @@ def load_test_data(dataset_path):
 
     return lines
 
+
 def save_dataset(data, output_file):
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
     print(f"Saved {len(data)} examples to {output_file}")
+
 
 def load_sentences_from_file(input_file):
     sentences = []
@@ -85,7 +102,7 @@ def generate_test_data(input_file, type_of_perturbation):
     return training_data
 
 
-def test_model(model_path, test_examples, metric):
+def test_model(model_path, test_examples, metric, tokenizer):
     # Validate model path
     if not Path(model_path).exists():
         raise FileNotFoundError(f"Model not found at: {model_path}")
@@ -93,7 +110,7 @@ def test_model(model_path, test_examples, metric):
     print(f"\nLoading model from: {model_path}")
 
     # Load tokenizer and model
-    tokenizer = GPT2Tokenizer.from_pretrained('mission-impossible-lms/partial-reverse-gpt2')
+
     model = GPT2LMHeadModel.from_pretrained(model_path)
     model.config.pad_token_id = tokenizer.eos_token_id
 
@@ -180,6 +197,13 @@ def save_results(results, output_file):
 
 
 def main(model_path, dataset_path, metric, type_of_perturbation):
+    tokenizer = None
+    if type_of_perturbation == "wordHop":
+        tokenizer = _init_tokenizer_with_markers(['🄿', '🅂'])
+    elif type_of_perturbation == 'localShuffle':
+        tokenizer = _init_tokenizer_with_markers()
+    elif type_of_perturbation == 'partialReverse':
+        tokenizer = _init_tokenizer_with_markers(['🅁'])
     test_data_path = f"./test_data_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_{metric}.json"
 
     # Generate training data from input file
@@ -200,11 +224,9 @@ def main(model_path, dataset_path, metric, type_of_perturbation):
     for checkpoint_dir in get_checkpoints_sorted(model_path):
         print(f"Evaluating model from checkpoint: {checkpoint_dir}")
         checkpoint = os.path.basename(checkpoint_dir)
-        results[checkpoint] = test_model(model_path, test_examples, metric)
-    results['final'] = test_model(model_path, test_examples, metric)
+        results[checkpoint] = test_model(model_path, test_examples, metric, tokenizer)
+    results['final'] = test_model(model_path, test_examples, metric, tokenizer)
     save_results(results, f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}.json")
-
-
 
 
 if __name__ == '__main__':
