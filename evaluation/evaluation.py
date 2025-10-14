@@ -95,6 +95,7 @@ def test_model(model_path, test_examples, metric):
     # Load tokenizer and model
     tokenizer = GPT2Tokenizer.from_pretrained('mission-impossible-lms/partial-reverse-gpt2')
     model = GPT2LMHeadModel.from_pretrained(model_path)
+    model.config.pad_token_id = tokenizer.eos_token_id
 
     # Move model to the appropriate device
     model = model.to(DEVICE)
