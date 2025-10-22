@@ -260,7 +260,7 @@ if __name__ == "__main__":
     elif args.type == 'partialReverse':
         model = 'mission-impossible-lms/partial-reverse-gpt2'
     elif args.type == 'localShuffle':
-        model = 'mission-impossible-lms/local-shuffle-w3-gpt2-no-pos'
+        model = 'mission-impossible-lms/local-shuffle-w3-gpt2'
     else:
         raise ValueError("Invalid perturbation type. Choose from 'wordHop', 'partialReverse', or 'localShuffle'.")
     main(config=config, input_file=args.path, model_name=model, type_of_perturbation=args.type)
