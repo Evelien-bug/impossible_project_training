@@ -304,8 +304,8 @@ def main(model_path, dataset_path, metric, type_of_perturbation):
     em_results['final'], bu_results['final']= test_model(model_path, test_examples, metric)
 
     # Save results
-    output_file_em = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_EM_{metric}.json"
-    output_file_bu = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_Bleu_{metric}.json"
+    output_file_em = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_EM.json"
+    output_file_bu = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_Bleu.json"
     save_results(em_results, output_file_em)
     save_results(bu_results, output_file_bu)
 
