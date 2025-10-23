@@ -237,13 +237,17 @@ def test_model(model_path, test_examples, metric):
                 actual.append(test_input)
                 continue
 
-            accuracy = metrics[metric](prediction, actual)
-            pbar.set_description(f"Accuracy: {accuracy:.4f}")
+            bleu_accuracy = metrics['BLEU'](prediction, actual)
+            em_accuracy = metrics['exact_match'](prediction, actual)
+            pbar.set_description(f"BU Accuracy: {bleu_accuracy:.4f},  EM: {em_accuracy:.4f}")
+            # pbar.set_description(f"EM: {em_accuracy:.4f}")
 
-    final_score = metrics[metric](prediction, actual)
+    final_em_score = metrics['exact_match'](prediction, actual)
+    final_bleu_score = metrics['BLEU'](prediction, actual)
     print(f"\nmodel: {model_path}")
-    print(f"{metric}: {final_score}")
-    return final_score
+    print(f" Bleu: {final_bleu_score:.4f}")
+    print(f"EM: {final_em_score:.4f}")
+    return final_em_score, final_bleu_score
 
 
 def get_checkpoints_sorted(path):
@@ -284,7 +288,8 @@ def main(model_path, dataset_path, metric, type_of_perturbation):
         with open(test_data_path, 'r', encoding='utf-8') as f:
             test_examples = json.load(f)
 
-    results = {}
+    em_results = {}
+    bu_results = {}
 
     # Evaluate all checkpoints
     checkpoints = get_checkpoints_sorted(model_path)
@@ -294,18 +299,25 @@ def main(model_path, dataset_path, metric, type_of_perturbation):
             print(f"Evaluating checkpoint: {os.path.basename(checkpoint_dir)}")
             print(f"{'=' * 80}")
             checkpoint = os.path.basename(checkpoint_dir)
-            results[checkpoint] = test_model(checkpoint_dir, test_examples, metric)
+            em_results[checkpoint], bu_results[checkpoint]= test_model(checkpoint_dir, test_examples, metric)
 
-    results['final'] = test_model(model_path, test_examples, metric)
+    em_results['final'], bu_results['final']= test_model(model_path, test_examples, metric)
 
     # Save results
-    output_file = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_{metric}.json"
-    save_results(results, output_file)
+    output_file_em = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_EM_{metric}.json"
+    output_file_bu = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_Bleu_{metric}.json"
+    save_results(em_results, output_file_em)
+    save_results(bu_results, output_file_bu)
 
     print(f"\n{'=' * 80}")
-    print("EVALUATION SUMMARY")
+    print("EVALUATION SUMMARY EM")
     print(f"{'=' * 80}")
-    for key, value in results.items():
+    for key, value in em_results.items():
+        print(f"{key}: {value:.4f}")
+    print(f"\n{'=' * 80}")
+    print("EVALUATION SUMMARY EM")
+    print(f"\n{'=' * 80}")
+    for key, value in bu_results.items():
         print(f"{key}: {value:.4f}")
 
 
