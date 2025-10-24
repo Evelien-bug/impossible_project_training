@@ -188,7 +188,7 @@ def process_long_text(input_corrupted, tokenizer, model, max_position_embeddings
     return merged
 
 
-def test_model(model_path, test_examples, metric):
+def test_model(model_path, test_examples):
     # Validate model path
     if not Path(model_path).exists():
         raise FileNotFoundError(f"Model not found at: {model_path}")
@@ -270,7 +270,7 @@ def save_results(results, output_file):
     print(f"Saved results to {output_file}")
 
 
-def main(model_path, dataset_path, metric, type_of_perturbation):
+def main(model_path, dataset_path, type_of_perturbation):
     test_data_path = f"./test_data_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}.json"
 
     # Generate training data from input file
@@ -299,9 +299,9 @@ def main(model_path, dataset_path, metric, type_of_perturbation):
             print(f"Evaluating checkpoint: {os.path.basename(checkpoint_dir)}")
             print(f"{'=' * 80}")
             checkpoint = os.path.basename(checkpoint_dir)
-            em_results[checkpoint], bu_results[checkpoint] = test_model(checkpoint_dir, test_examples, metric)
+            em_results[checkpoint], bu_results[checkpoint] = test_model(checkpoint_dir, test_examples)
 
-    em_results['final'], bu_results['final'] = test_model(model_path, test_examples, metric)
+    em_results['final'], bu_results['final'] = test_model(model_path, test_examples)
 
     # Save results
     output_file_em = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_EM.json"
@@ -347,4 +347,4 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    main(args.model, args.path, args.metric, args.type)
+    main(args.model, args.path, args.type)
