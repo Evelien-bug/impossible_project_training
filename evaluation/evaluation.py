@@ -308,8 +308,8 @@ def main(model_path, dataset_path, type_of_perturbation):
     save_dataset(full_samples, f"./full_samples_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_final.json")
 
     # Save results
-    output_file_em = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_EM.json"
-    output_file_bu = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_Bleu.json"
+    output_file_em = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_exact_match.json"
+    output_file_bu = f"./results_{dataset_path.split('/')[-1].split('.')[0]}_{type_of_perturbation}_BLEU.json"
     save_results(em_results, output_file_em)
     save_results(bu_results, output_file_bu)
 
