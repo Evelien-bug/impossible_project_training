@@ -11,6 +11,9 @@ import argparse
 
 
 def calculate_perplexity(text, model, tokenizer, device='cpu', max_length=1024):
+    """
+    Calculate perplexity for a single text sample.
+    """
     # Encode the text
     encodings = tokenizer(text, return_tensors='pt', truncation=True, max_length=max_length)
     input_ids = encodings.input_ids.to(device)
@@ -27,57 +30,100 @@ def calculate_perplexity(text, model, tokenizer, device='cpu', max_length=1024):
 
 
 def calculate_perplexities_for_dataset(data, model, tokenizer, device):
+    """
+    Calculate average perplexity for input, prediction, and actual fields.
+    """
     # Initialize storage for perplexities
     input_ppls = []
     prediction_ppls = []
     actual_ppls = []
 
+    # Track issues
+    empty_inputs = 0
+    empty_predictions = 0
+    empty_actuals = 0
+    invalid_input_ppls = 0
+    invalid_prediction_ppls = 0
+    invalid_actual_ppls = 0
+
     # Calculate perplexity for each sample
-    for sample in tqdm(data, desc="Processing samples"):
+    for idx, sample in enumerate(tqdm(data, desc="Processing samples")):
         # Calculate for input
         if sample['input'].strip():
             input_ppl = calculate_perplexity(sample['input'], model, tokenizer, device)
-            input_ppls.append(input_ppl)
+            if np.isfinite(input_ppl):
+                input_ppls.append(input_ppl)
+            else:
+                invalid_input_ppls += 1
+        else:
+            empty_inputs += 1
 
         # Calculate for prediction
         if sample['prediction'].strip():
             pred_ppl = calculate_perplexity(sample['prediction'], model, tokenizer, device)
-            prediction_ppls.append(pred_ppl)
+            if np.isfinite(pred_ppl):
+                prediction_ppls.append(pred_ppl)
+            else:
+                invalid_prediction_ppls += 1
+        else:
+            empty_predictions += 1
 
         # Calculate for actual
         if sample['actual'].strip():
             actual_ppl = calculate_perplexity(sample['actual'], model, tokenizer, device)
-            actual_ppls.append(actual_ppl)
+            if np.isfinite(actual_ppl):
+                actual_ppls.append(actual_ppl)
+            else:
+                invalid_actual_ppls += 1
+        else:
+            empty_actuals += 1
 
-    # Calculate statistics
+    # Print warnings if issues found
+    if empty_predictions > 0:
+        print(f"\n⚠️  WARNING: Found {empty_predictions} empty predictions!")
+    if invalid_prediction_ppls > 0:
+        print(f"⚠️  WARNING: Found {invalid_prediction_ppls} invalid (inf/nan) prediction perplexities!")
+    if empty_inputs > 0:
+        print(f"⚠️  WARNING: Found {empty_inputs} empty inputs!")
+    if invalid_input_ppls > 0:
+        print(f"⚠️  WARNING: Found {invalid_input_ppls} invalid (inf/nan) input perplexities!")
+    if empty_actuals > 0:
+        print(f"⚠️  WARNING: Found {empty_actuals} empty actuals!")
+    if invalid_actual_ppls > 0:
+        print(f"⚠️  WARNING: Found {invalid_actual_ppls} invalid (inf/nan) actual perplexities!")
+
+    # Calculate statistics (handle empty lists)
+    def safe_stats(ppls_list):
+        if len(ppls_list) > 0:
+            return {
+                'average': np.mean(ppls_list),
+                'std': np.std(ppls_list),
+                'min': np.min(ppls_list),
+                'max': np.max(ppls_list),
+                'count': len(ppls_list),
+                'individual': ppls_list
+            }
+        else:
+            return {
+                'average': np.nan,
+                'std': np.nan,
+                'min': np.nan,
+                'max': np.nan,
+                'count': 0,
+                'individual': []
+            }
+
     results = {
-        'input': {
-            'average': np.mean(input_ppls),
-            'std': np.std(input_ppls),
-            'min': np.min(input_ppls),
-            'max': np.max(input_ppls),
-            'individual': input_ppls
-        },
-        'prediction': {
-            'average': np.mean(prediction_ppls),
-            'std': np.std(prediction_ppls),
-            'min': np.min(prediction_ppls),
-            'max': np.max(prediction_ppls),
-            'individual': prediction_ppls
-        },
-        'actual': {
-            'average': np.mean(actual_ppls),
-            'std': np.std(actual_ppls),
-            'min': np.min(actual_ppls),
-            'max': np.max(actual_ppls),
-            'individual': actual_ppls
-        }
+        'input': safe_stats(input_ppls),
+        'prediction': safe_stats(prediction_ppls),
+        'actual': safe_stats(actual_ppls)
     }
 
     return results
 
 
 def extract_checkpoint_number(filename):
+    """Extract checkpoint number from filename."""
     match = re.search(r'checkpoint-(\d+)', filename)
     if match:
         return int(match.group(1))
@@ -85,6 +131,9 @@ def extract_checkpoint_number(filename):
 
 
 def process_all_datasets(pattern='*checkpoint-*.json', model_name='gpt2', device=None):
+    """
+    Process all dataset files matching the pattern.
+    """
     # Set device
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -146,15 +195,21 @@ def process_all_datasets(pattern='*checkpoint-*.json', model_name='gpt2', device
         # Print summary for this checkpoint
         print(f"\nResults for Checkpoint {checkpoint}:")
         for field in ['input', 'prediction', 'actual']:
-            print(f"  {field.upper()}: Avg={results[field]['average']:.2f}, "
-                  f"Std={results[field]['std']:.2f}, "
-                  f"Min={results[field]['min']:.2f}, "
-                  f"Max={results[field]['max']:.2f}")
+            count = results[field]['count']
+            if count > 0:
+                print(f"  {field.upper()}: Avg={results[field]['average']:.2f}, "
+                      f"Std={results[field]['std']:.2f}, "
+                      f"Min={results[field]['min']:.2f}, "
+                      f"Max={results[field]['max']:.2f}, "
+                      f"Valid_Samples={count}")
+            else:
+                print(f"  {field.upper()}: No valid samples (all empty or invalid)")
 
     return all_results
 
 
 def create_summary_table(all_results):
+    """Create a summary table comparing all checkpoints."""
     rows = []
 
     for checkpoint in sorted(all_results.keys()):
@@ -177,6 +232,7 @@ def create_summary_table(all_results):
 
 
 def save_results(all_results, output_dir='perplexity_results'):
+    """Save all results to files."""
     os.makedirs(output_dir, exist_ok=True)
 
     # Save detailed results for each checkpoint
@@ -190,10 +246,12 @@ def save_results(all_results, output_dir='perplexity_results'):
             'num_samples': data['num_samples'],
             'results': {
                 field: {
-                    'average': float(data['results'][field]['average']),
-                    'std': float(data['results'][field]['std']),
-                    'min': float(data['results'][field]['min']),
-                    'max': float(data['results'][field]['max']),
+                    'average': float(data['results'][field]['average']) if np.isfinite(
+                        data['results'][field]['average']) else None,
+                    'std': float(data['results'][field]['std']) if np.isfinite(data['results'][field]['std']) else None,
+                    'min': float(data['results'][field]['min']) if np.isfinite(data['results'][field]['min']) else None,
+                    'max': float(data['results'][field]['max']) if np.isfinite(data['results'][field]['max']) else None,
+                    'count': data['results'][field]['count'],
                     'individual': [float(x) for x in data['results'][field]['individual']]
                 }
                 for field in ['input', 'prediction', 'actual']
@@ -218,22 +276,26 @@ def save_results(all_results, output_dir='perplexity_results'):
             'filename': all_results[checkpoint]['filename'],
             'num_samples': all_results[checkpoint]['num_samples'],
             'input': {
-                'average': float(results['input']['average']),
-                'std': float(results['input']['std']),
-                'min': float(results['input']['min']),
-                'max': float(results['input']['max'])
+                'average': float(results['input']['average']) if np.isfinite(results['input']['average']) else None,
+                'std': float(results['input']['std']) if np.isfinite(results['input']['std']) else None,
+                'min': float(results['input']['min']) if np.isfinite(results['input']['min']) else None,
+                'max': float(results['input']['max']) if np.isfinite(results['input']['max']) else None,
+                'count': results['input']['count']
             },
             'prediction': {
-                'average': float(results['prediction']['average']),
-                'std': float(results['prediction']['std']),
-                'min': float(results['prediction']['min']),
-                'max': float(results['prediction']['max'])
+                'average': float(results['prediction']['average']) if np.isfinite(
+                    results['prediction']['average']) else None,
+                'std': float(results['prediction']['std']) if np.isfinite(results['prediction']['std']) else None,
+                'min': float(results['prediction']['min']) if np.isfinite(results['prediction']['min']) else None,
+                'max': float(results['prediction']['max']) if np.isfinite(results['prediction']['max']) else None,
+                'count': results['prediction']['count']
             },
             'actual': {
-                'average': float(results['actual']['average']),
-                'std': float(results['actual']['std']),
-                'min': float(results['actual']['min']),
-                'max': float(results['actual']['max'])
+                'average': float(results['actual']['average']) if np.isfinite(results['actual']['average']) else None,
+                'std': float(results['actual']['std']) if np.isfinite(results['actual']['std']) else None,
+                'min': float(results['actual']['min']) if np.isfinite(results['actual']['min']) else None,
+                'max': float(results['actual']['max']) if np.isfinite(results['actual']['max']) else None,
+                'count': results['actual']['count']
             }
         }
         all_results_json['summary'].append(summary_entry)
