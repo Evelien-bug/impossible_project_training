@@ -1,3 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+test-logs/
+
+# Test output
+test-output/
 .venv
 .idea
 __pycache__
