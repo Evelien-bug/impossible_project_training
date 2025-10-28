@@ -15,3 +15,6 @@ test-logs/
 
 # Test output
 test-output/
+.venv
+.idea
+__pycache__

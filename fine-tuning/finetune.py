@@ -69,7 +69,7 @@ def load_sentences_from_file(input_file):
 def generate_training_data(input_file, type_of_perturbation):
     print("Generating training data...")
     sentences = load_sentences_from_file(input_file)
-    training_data = functions[type_of_perturbation](sentences, 512)
+    training_data = functions[type_of_perturbation](sentences)
     return training_data
 
 def save_dataset(data, output_file):
