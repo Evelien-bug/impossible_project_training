@@ -9,11 +9,20 @@ import re
 import pandas as pd
 import argparse
 
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+    print("Using CUDA")
+elif torch.backends.mps.is_available():
+    device = torch.device('cpu')
+    print("MPS available but using CPU due to transformer compatibility issues")
+else:
+    device = torch.device('cpu')
+    print("Using CPU")
 
-def calculate_perplexity(text, model, tokenizer, device='cpu', max_length=1024):
-    """
-    Calculate perplexity for a single text sample.
-    """
+print(f"Device: {device}\n")
+
+
+def calculate_perplexity(text, model, tokenizer, max_length=1024):
     # Encode the text
     encodings = tokenizer(text, return_tensors='pt', truncation=True, max_length=max_length)
     input_ids = encodings.input_ids.to(device)
@@ -29,10 +38,7 @@ def calculate_perplexity(text, model, tokenizer, device='cpu', max_length=1024):
     return perplexity
 
 
-def calculate_perplexities_for_dataset(data, model, tokenizer, device):
-    """
-    Calculate average perplexity for input, prediction, and actual fields.
-    """
+def calculate_perplexities_for_dataset(data, model, tokenizer):
     # Initialize storage for perplexities
     input_ppls = []
     prediction_ppls = []
@@ -47,10 +53,10 @@ def calculate_perplexities_for_dataset(data, model, tokenizer, device):
     invalid_actual_ppls = 0
 
     # Calculate perplexity for each sample
-    for idx, sample in enumerate(tqdm(data, desc="Processing samples")):
+    for idx, sample in enumerate(tqdm(data, desc="Processing samples", leave=False)):
         # Calculate for input
         if sample['input'].strip():
-            input_ppl = calculate_perplexity(sample['input'], model, tokenizer, device)
+            input_ppl = calculate_perplexity(sample['input'], model, tokenizer)
             if np.isfinite(input_ppl):
                 input_ppls.append(input_ppl)
             else:
@@ -60,7 +66,7 @@ def calculate_perplexities_for_dataset(data, model, tokenizer, device):
 
         # Calculate for prediction
         if sample['prediction'].strip():
-            pred_ppl = calculate_perplexity(sample['prediction'], model, tokenizer, device)
+            pred_ppl = calculate_perplexity(sample['prediction'], model, tokenizer)
             if np.isfinite(pred_ppl):
                 prediction_ppls.append(pred_ppl)
             else:
@@ -70,7 +76,7 @@ def calculate_perplexities_for_dataset(data, model, tokenizer, device):
 
         # Calculate for actual
         if sample['actual'].strip():
-            actual_ppl = calculate_perplexity(sample['actual'], model, tokenizer, device)
+            actual_ppl = calculate_perplexity(sample['actual'], model, tokenizer)
             if np.isfinite(actual_ppl):
                 actual_ppls.append(actual_ppl)
             else:
@@ -80,17 +86,9 @@ def calculate_perplexities_for_dataset(data, model, tokenizer, device):
 
     # Print warnings if issues found
     if empty_predictions > 0:
-        print(f"\n⚠️  WARNING: Found {empty_predictions} empty predictions!")
+        print(f"    ⚠️  WARNING: Found {empty_predictions} empty predictions!")
     if invalid_prediction_ppls > 0:
-        print(f"⚠️  WARNING: Found {invalid_prediction_ppls} invalid (inf/nan) prediction perplexities!")
-    if empty_inputs > 0:
-        print(f"⚠️  WARNING: Found {empty_inputs} empty inputs!")
-    if invalid_input_ppls > 0:
-        print(f"⚠️  WARNING: Found {invalid_input_ppls} invalid (inf/nan) input perplexities!")
-    if empty_actuals > 0:
-        print(f"⚠️  WARNING: Found {empty_actuals} empty actuals!")
-    if invalid_actual_ppls > 0:
-        print(f"⚠️  WARNING: Found {invalid_actual_ppls} invalid (inf/nan) actual perplexities!")
+        print(f"    ⚠️  WARNING: Found {invalid_prediction_ppls} invalid (inf/nan) prediction perplexities!")
 
     # Calculate statistics (handle empty lists)
     def safe_stats(ppls_list):
@@ -130,255 +128,221 @@ def extract_checkpoint_number(filename):
     return None
 
 
-def process_all_datasets(pattern='*checkpoint-*.json', model_name='gpt2', device=None):
-    """
-    Process all dataset files matching the pattern.
-    """
-    # Set device
-    if device is None:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f"Using device: {device}\n")
+def extract_experiment_name(filename):
+    # Pattern: full_samples_gutenberg-100k_EXPERIMENT_checkpoint-*.json
+    # or: full_samples_gutenberg-100k_EXPERIMENT_final.json
+    basename = os.path.basename(filename)
 
-    # Find all matching files
-    files = glob.glob(pattern)
+    # Try to match checkpoint files
+    match = re.search(r'full_samples_gutenberg-100k_([^_]+)_checkpoint-\d+\.json', basename)
+    if match:
+        return match.group(1)
 
-    if not files:
-        print(f"No files found matching pattern: {pattern}")
-        print("Please make sure your dataset files are in the current directory.")
+    # Try to match final files
+    match = re.search(r'full_samples_gutenberg-100k_([^_]+)_final\.json', basename)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def process_all_experiments(base_pattern='full_samples_*_checkpoint-*.json', model_name='gpt2'):
+    """
+    Process all experiment types and combine results.
+    """
+    # Find all files
+    all_files = glob.glob(base_pattern)
+
+    if not all_files:
+        print(f"No files found matching pattern: {base_pattern}")
         return None
 
-    # Sort files by checkpoint number
-    files_with_checkpoints = []
-    for file in files:
+    # Group files by experiment type
+    experiments = {}
+    for file in all_files:
+        exp_name = extract_experiment_name(file)
         checkpoint = extract_checkpoint_number(file)
-        if checkpoint is not None:
-            files_with_checkpoints.append((checkpoint, file))
 
-    files_with_checkpoints.sort(key=lambda x: x[0])
+        if exp_name and checkpoint is not None:
+            if exp_name not in experiments:
+                experiments[exp_name] = []
+            experiments[exp_name].append((checkpoint, file))
 
-    print(f"Found {len(files_with_checkpoints)} dataset files:")
-    for checkpoint, file in files_with_checkpoints:
-        print(f"  - Checkpoint {checkpoint}: {file}")
+    if not experiments:
+        print("No valid experiment files found!")
+        return None
+
+    print(f"Found {len(experiments)} experiment types:")
+    for exp_name, files in experiments.items():
+        print(f"  - {exp_name}: {len(files)} checkpoints")
     print()
 
-    # Load model and tokenizer once
+    # Load model once
     print(f"Loading {model_name}...")
     model = GPT2LMHeadModel.from_pretrained(model_name).to(device)
     tokenizer = GPT2TokenizerFast.from_pretrained(model_name)
     model.eval()
     print("Model loaded!\n")
 
-    # Process each file
-    all_results = {}
+    # Process each experiment
+    all_experiment_results = {}
 
-    for checkpoint, file in files_with_checkpoints:
-        print(f"\n{'=' * 70}")
-        print(f"Processing Checkpoint {checkpoint}: {file}")
-        print('=' * 70)
+    for exp_name in sorted(experiments.keys()):
+        files = experiments[exp_name]
 
-        # Load dataset
-        with open(file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        print(f"\n{'=' * 80}")
+        print(f"PROCESSING EXPERIMENT: {exp_name}")
+        print('=' * 80)
 
-        print(f"Loaded {len(data)} samples")
+        # Sort files by checkpoint
+        files.sort(key=lambda x: x[0])
 
-        # Calculate perplexities
-        results = calculate_perplexities_for_dataset(data, model, tokenizer, device)
+        exp_results = {}
 
-        # Store results
-        all_results[checkpoint] = {
-            'filename': file,
-            'num_samples': len(data),
-            'results': results
-        }
+        for checkpoint, file in files:
+            print(f"\n  Checkpoint {checkpoint}: {os.path.basename(file)}")
 
-        # Print summary for this checkpoint
-        print(f"\nResults for Checkpoint {checkpoint}:")
-        for field in ['input', 'prediction', 'actual']:
-            count = results[field]['count']
-            if count > 0:
-                print(f"  {field.upper()}: Avg={results[field]['average']:.2f}, "
-                      f"Std={results[field]['std']:.2f}, "
-                      f"Min={results[field]['min']:.2f}, "
-                      f"Max={results[field]['max']:.2f}, "
-                      f"Valid_Samples={count}")
-            else:
-                print(f"  {field.upper()}: No valid samples (all empty or invalid)")
+            # Load dataset
+            with open(file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
 
-    return all_results
+            print(f"    Loaded {len(data)} samples")
+
+            # Calculate perplexities
+            results = calculate_perplexities_for_dataset(data, model, tokenizer)
+
+            # Store results
+            exp_results[checkpoint] = {
+                'filename': file,
+                'num_samples': len(data),
+                'results': results
+            }
+
+            # Print summary
+            for field in ['input', 'prediction', 'actual']:
+                count = results[field]['count']
+                if count > 0:
+                    print(f"    {field}: Avg={results[field]['average']:.2f}, "
+                          f"Std={results[field]['std']:.2f}, Count={count}")
+                else:
+                    print(f"    {field}: No valid samples")
+
+        all_experiment_results[exp_name] = exp_results
+
+    return all_experiment_results
 
 
-def create_summary_table(all_results):
-    """Create a summary table comparing all checkpoints."""
+def save_combined_results(all_experiment_results, output_file='combined_perplexity_results.csv'):
     rows = []
 
-    for checkpoint in sorted(all_results.keys()):
-        results = all_results[checkpoint]['results']
+    for exp_name, exp_results in all_experiment_results.items():
+        for checkpoint in sorted(exp_results.keys()):
+            results = exp_results[checkpoint]['results']
 
-        row = {
-            'Checkpoint': checkpoint,
-            'Num_Samples': all_results[checkpoint]['num_samples'],
-            'Input_Avg': results['input']['average'],
-            'Input_Std': results['input']['std'],
-            'Prediction_Avg': results['prediction']['average'],
-            'Prediction_Std': results['prediction']['std'],
-            'Actual_Avg': results['actual']['average'],
-            'Actual_Std': results['actual']['std']
-        }
-        rows.append(row)
+            row = {
+                'Experiment': exp_name,
+                'Checkpoint': checkpoint,
+                'Num_Samples': exp_results[checkpoint]['num_samples'],
+                'Input_Avg': results['input']['average'],
+                'Input_Std': results['input']['std'],
+                'Input_Count': results['input']['count'],
+                'Prediction_Avg': results['prediction']['average'],
+                'Prediction_Std': results['prediction']['std'],
+                'Prediction_Count': results['prediction']['count'],
+                'Actual_Avg': results['actual']['average'],
+                'Actual_Std': results['actual']['std'],
+                'Actual_Count': results['actual']['count']
+            }
+            rows.append(row)
 
+    # Create DataFrame
     df = pd.DataFrame(rows)
+
+    # Save to CSV
+    df.to_csv(output_file, index=False, float_format='%.2f')
+    print(f"\n{'=' * 80}")
+    print(f"SAVED COMBINED RESULTS TO: {output_file}")
+    print('=' * 80)
+
+    # Print summary
+    print("\nSummary by Experiment:")
+    print("-" * 80)
+    for exp_name in sorted(df['Experiment'].unique()):
+        exp_df = df[df['Experiment'] == exp_name]
+        print(f"\n{exp_name}:")
+        print(f"  Checkpoints: {exp_df['Checkpoint'].min()} - {exp_df['Checkpoint'].max()}")
+        print(f"  Total samples per checkpoint: {exp_df['Num_Samples'].iloc[0]}")
+
+        # Average across all checkpoints (excluding NaN)
+        print(f"  Average perplexity (across all checkpoints):")
+        if exp_df['Input_Avg'].notna().any():
+            print(f"    Input: {exp_df['Input_Avg'].mean():.2f} (std: {exp_df['Input_Std'].mean():.2f})")
+        if exp_df['Prediction_Avg'].notna().any():
+            print(f"    Prediction: {exp_df['Prediction_Avg'].mean():.2f} (std: {exp_df['Prediction_Std'].mean():.2f})")
+        if exp_df['Actual_Avg'].notna().any():
+            print(f"    Actual: {exp_df['Actual_Avg'].mean():.2f} (std: {exp_df['Actual_Std'].mean():.2f})")
+
     return df
 
 
-def save_results(all_results, output_dir='perplexity_results'):
-    """Save all results to files."""
-    os.makedirs(output_dir, exist_ok=True)
-
-    # Save detailed results for each checkpoint
-    for checkpoint, data in all_results.items():
-        output_file = os.path.join(output_dir, f'checkpoint_{checkpoint}_detailed.json')
-
-        # Convert numpy types to Python types for JSON serialization
-        output = {
-            'checkpoint': checkpoint,
-            'filename': data['filename'],
-            'num_samples': data['num_samples'],
-            'results': {
-                field: {
-                    'average': float(data['results'][field]['average']) if np.isfinite(
-                        data['results'][field]['average']) else None,
-                    'std': float(data['results'][field]['std']) if np.isfinite(data['results'][field]['std']) else None,
-                    'min': float(data['results'][field]['min']) if np.isfinite(data['results'][field]['min']) else None,
-                    'max': float(data['results'][field]['max']) if np.isfinite(data['results'][field]['max']) else None,
-                    'count': data['results'][field]['count'],
-                    'individual': [float(x) for x in data['results'][field]['individual']]
-                }
-                for field in ['input', 'prediction', 'actual']
-            }
-        }
-
-        with open(output_file, 'w') as f:
-            json.dump(output, f, indent=2)
-
-    # Create comprehensive JSON with all results
-    all_results_json = {
-        'summary': [],
-        'detailed': {}
-    }
-
-    # Add summary for each checkpoint
-    for checkpoint in sorted(all_results.keys()):
-        results = all_results[checkpoint]['results']
-
-        summary_entry = {
-            'checkpoint': checkpoint,
-            'filename': all_results[checkpoint]['filename'],
-            'num_samples': all_results[checkpoint]['num_samples'],
-            'input': {
-                'average': float(results['input']['average']) if np.isfinite(results['input']['average']) else None,
-                'std': float(results['input']['std']) if np.isfinite(results['input']['std']) else None,
-                'min': float(results['input']['min']) if np.isfinite(results['input']['min']) else None,
-                'max': float(results['input']['max']) if np.isfinite(results['input']['max']) else None,
-                'count': results['input']['count']
-            },
-            'prediction': {
-                'average': float(results['prediction']['average']) if np.isfinite(
-                    results['prediction']['average']) else None,
-                'std': float(results['prediction']['std']) if np.isfinite(results['prediction']['std']) else None,
-                'min': float(results['prediction']['min']) if np.isfinite(results['prediction']['min']) else None,
-                'max': float(results['prediction']['max']) if np.isfinite(results['prediction']['max']) else None,
-                'count': results['prediction']['count']
-            },
-            'actual': {
-                'average': float(results['actual']['average']) if np.isfinite(results['actual']['average']) else None,
-                'std': float(results['actual']['std']) if np.isfinite(results['actual']['std']) else None,
-                'min': float(results['actual']['min']) if np.isfinite(results['actual']['min']) else None,
-                'max': float(results['actual']['max']) if np.isfinite(results['actual']['max']) else None,
-                'count': results['actual']['count']
-            }
-        }
-        all_results_json['summary'].append(summary_entry)
-
-        # Add detailed individual perplexities
-        all_results_json['detailed'][str(checkpoint)] = {
-            'input': [float(x) for x in results['input']['individual']],
-            'prediction': [float(x) for x in results['prediction']['individual']],
-            'actual': [float(x) for x in results['actual']['individual']]
-        }
-
-    # Save comprehensive JSON
-    json_file = os.path.join(output_dir, 'all_results.json')
-    with open(json_file, 'w') as f:
-        json.dump(all_results_json, f, indent=2)
-
-    # Create and save summary table
-    summary_df = create_summary_table(all_results)
-
-    # Save as CSV
-    csv_file = os.path.join(output_dir, 'summary_all_checkpoints.csv')
-    summary_df.to_csv(csv_file, index=False, float_format='%.2f')
-
-    # Save as formatted text
-    txt_file = os.path.join(output_dir, 'summary_all_checkpoints.txt')
-    with open(txt_file, 'w') as f:
-        f.write("=" * 100 + "\n")
-        f.write("PERPLEXITY SUMMARY - ALL CHECKPOINTS\n")
-        f.write("=" * 100 + "\n\n")
-        f.write(summary_df.to_string(index=False))
-        f.write("\n\n" + "=" * 100 + "\n")
-
-    print(f"\n\nResults saved to '{output_dir}/' directory:")
-    print(f"  - All results (JSON): all_results.json")
-    print(f"  - Detailed results: checkpoint_X_detailed.json")
-    print(f"  - Summary CSV: summary_all_checkpoints.csv")
-    print(f"  - Summary text: summary_all_checkpoints.txt")
-
-    return summary_df
-
-
 if __name__ == "__main__":
-    # Process all checkpoint datasets
-    # Adjust the pattern if your files have a different naming convention
-
     parser = argparse.ArgumentParser(
-        description='Test fine-tuned GPT-2 model for token reversal',
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        description='Calculate perplexity for GPT-2 generated text across multiple experiments',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Process all files in full-samples directory (default)
+  python script.py
+
+  # Specify custom pattern
+  python script.py -p "full-samples/full_samples_gutenberg-100k_*_checkpoint-*.json"
+
+  # Different directory
+  python script.py -p "my-samples/full_samples_*_checkpoint-*.json"
+
+  # Specify output file
+  python script.py -o my_results.csv
+        """
     )
 
     parser.add_argument(
-        '-p', '--path',
+        '-p', '--pattern',
         type=str,
-        required=True,
-        help="Path to test data file (one example per line)"
+        default='full-samples/full_samples_gutenberg-100k_*_checkpoint-*.json',
+        help="File pattern to match (default: full-samples/full_samples_gutenberg-100k_*_checkpoint-*.json)"
     )
 
-    parser.add_argument('-t', '--type',
-                        type=str,
-                        required=True,
-                        help="Type of perturbation (wordHop, partialReverse, localShuffle, etc.)")
+    parser.add_argument(
+        '-o', '--output',
+        type=str,
+        default='combined_perplexity_results.csv',
+        help="Output CSV filename (default: combined_perplexity_results.csv)"
+    )
 
     args = parser.parse_args()
 
-    print("=" * 70)
-    print("GPT-2 PERPLEXITY CALCULATOR FOR MULTIPLE CHECKPOINTS")
-    print("=" * 70)
+    print("=" * 80)
+    print("GPT-2 PERPLEXITY CALCULATOR FOR MULTIPLE EXPERIMENTS")
+    print("=" * 80)
+    print(f"Pattern: {args.pattern}")
+    print(f"Output: {args.output}")
     print()
 
-    pattern = f'*_{args.type}_checkpoint-*.json'
+    # Process all experiments
+    all_experiment_results = process_all_experiments(base_pattern=args.pattern, model_name='gpt2')
 
-    # Process all datasets
-    all_results = process_all_datasets(pattern=pattern, model_name='gpt2')
+    if all_experiment_results:
+        # Save combined results
+        df = save_combined_results(all_experiment_results, output_file=args.output)
 
-    if all_results:
-        # Save results
-        summary_df = save_results(all_results, output_dir=f'perplexity_results_{args.type}')
-
-        # Print final summary
-        print("\n\n" + "=" * 100)
-        print("FINAL SUMMARY - ALL CHECKPOINTS")
-        print("=" * 100)
-        print(summary_df.to_string(index=False))
-        print("=" * 100)
+        # Print final summary table
+        print("\n" + "=" * 80)
+        print("FINAL RESULTS TABLE (First 20 rows)")
+        print("=" * 80)
+        print(df.head(20).to_string(index=False))
+        if len(df) > 20:
+            print(f"\n... ({len(df) - 20} more rows)")
+        print("=" * 80)
+        print(f"\nFull results saved to: {args.output}")
     else:
         print("\nNo datasets were processed. Please check your file pattern and try again.")
