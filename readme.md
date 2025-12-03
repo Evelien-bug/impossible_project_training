@@ -106,8 +106,3 @@ Contributions and new perturbations are welcome!
 
 (Currently no license specified; please add one if intending to permit use/reuse.)
 
----
-
-## Contact
-
-Created by [amirhoseinMhmd](https://github.com/amirhoseinMhmd)
