@@ -1,12 +1,6 @@
 import pytest
-import sys
-from pathlib import Path
 
-# Add the utils directory to the path to import the modules
-utils_path = Path(__file__).parent.parent / "utils"
-sys.path.append(str(utils_path))
-
-from shuffle import noshuffle, local_shuffle, full_shuffle
+from utils.shuffle import noshuffle, local_shuffle, full_shuffle
 
 # Test sentence
 text = "The quick brown fox jumps over the lazy dog."

@@ -1,14 +1,15 @@
-import sys
+import argparse
 import os
+from typing import List
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import spacy
+from transformers import GPT2Tokenizer, AddedToken
+from tqdm import tqdm
+
 from utils.utils import load_sentences_from_file, save_dataset
 
-import argparse
-from transformers import GPT2Tokenizer, AddedToken
-import spacy
-from typing import List
-from tqdm import tqdm
+SINGULAR_MARKER = '🅂'
+PLURAL_MARKER = '🄿'
 
 
 def tokenizer_with_markers():
@@ -22,10 +23,9 @@ def tokenizer_with_markers():
         new_tokens.append(AddedToken(marker, lstrip=True, rstrip=False))
     tokenizer.add_tokens(new_tokens)
     return tokenizer
-nlp = spacy.load("en_core_web_trf")
-SINGULAR_MARKER = '🅂'
-PLURAL_MARKER = '🄿'
 
+
+nlp = spacy.load("en_core_web_trf")
 tokenizer = tokenizer_with_markers()
 
 
@@ -182,14 +182,15 @@ def wordhop(text: str) -> str:
 
     return ''.join(result).strip().replace('  ', ' ')
 
+
 def wordhop_batch(texts: List[str]) -> List[tuple]:
     training_data = []
     for sentence in tqdm(texts):
         training_data.append((wordhop(sentence), sentence))
-    return list(zip(training_data, texts))
+    return training_data
+
 
 def is_3rd_person_present_verb(token) -> bool:
-    # Check for present tense verbs
     if token.tag_ in ['VBZ', 'VBP']:
         return True
     if token.pos_ == 'VERB':
@@ -207,10 +208,11 @@ def is_singular_verb(token) -> bool:
         return True
     return False
 
+
 def generate_training_data(input_file):
     print("Generating training data...")
     sentences = load_sentences_from_file(input_file)
-    training_data = wordhop_batch(sentences, 512)
+    training_data = wordhop_batch(sentences)
     return training_data
 
 
@@ -224,7 +226,7 @@ def pre_process(input_file, training_data_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', type=str, required=True, )
+    parser.add_argument('-i', '--input', type=str, required=True)
 
     args = parser.parse_args()
 

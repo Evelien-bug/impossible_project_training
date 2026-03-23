@@ -1,6 +1,7 @@
 import random
 import json
-from pathlib import Path
+import argparse
+
 import torch
 from transformers import (
     GPT2Tokenizer,
@@ -8,27 +9,9 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-import yaml
 from datasets import Dataset
-import argparse
 
-
-def load_configs(config_path):
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-    return config
-
-
-def get_device():
-    if torch.backends.mps.is_available():
-        device = torch.device("mps")
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
-    print(f"Using device: {device}")
-    return device
-
+from utils.utils import load_sentences_from_file, save_dataset, load_configs, get_device
 
 DEVICE = get_device()
 
@@ -48,25 +31,6 @@ def create_reversal_example(text, marker='🅁'):
     return corrupted, original
 
 
-def load_sentences_from_file(input_file):
-    sentences = []
-
-    if not Path(input_file).exists():
-        raise FileNotFoundError(f"Input file not found: {input_file}")
-
-    with open(input_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line and len(line.split()) >= 3:
-                sentences.append(line)
-
-    if not sentences:
-        raise ValueError(f"No valid sentences found in {input_file}")
-
-    print(f"Loaded {len(sentences)} sentences from {input_file}")
-    return sentences
-
-
 def generate_training_data(input_file, marker='🅁'):
     training_data = []
     sentences = load_sentences_from_file(input_file)
@@ -77,12 +41,6 @@ def generate_training_data(input_file, marker='🅁'):
             training_data.append(example)
 
     return training_data
-
-
-def save_dataset(data, output_file='training_data_seq2seq.json'):
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    print(f"Saved {len(data)} examples to {output_file}")
 
 
 def prepare_seq2seq_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
@@ -98,13 +56,6 @@ def prepare_seq2seq_dataset(training_data, tokenizer, train_split=0.9, max_lengt
         labels_list = []
 
         for corrupted, correct in data:
-            # SEQ2SEQ APPROACH:
-            # Input: corrupted text (with 🅁 marker)
-            # Output: corrected text
-            # NO INSTRUCTION PROMPT
-            # NO MASKING
-
-            # Tokenize input (corrupted)
             input_encoded = tokenizer(
                 corrupted,
                 truncation=True,
@@ -113,7 +64,6 @@ def prepare_seq2seq_dataset(training_data, tokenizer, train_split=0.9, max_lengt
                 return_tensors=None
             )
 
-            # Tokenize output (correct) - this becomes labels
             output_encoded = tokenizer(
                 correct,
                 truncation=True,
@@ -122,12 +72,7 @@ def prepare_seq2seq_dataset(training_data, tokenizer, train_split=0.9, max_lengt
                 return_tensors=None
             )
 
-            # CRITICAL DIFFERENCE: No masking! All tokens get loss
-            # In masked approach: labels = [-100] * prompt_length + tokens
-            # In seq2seq: labels = all_output_tokens
             labels = output_encoded['input_ids']
-
-            # Replace padding token id with -100 (standard practice)
             labels = [
                 token_id if token_id != tokenizer.pad_token_id else -100
                 for token_id in labels
@@ -156,31 +101,24 @@ def prepare_seq2seq_dataset(training_data, tokenizer, train_split=0.9, max_lengt
     train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
     eval_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 
-    print(f"✓ Train samples: {len(train_dataset)}")
-    print(f"✓ Eval samples: {len(eval_dataset)}")
+    print(f"Train samples: {len(train_dataset)}")
+    print(f"Eval samples: {len(eval_dataset)}")
 
     return train_dataset, eval_dataset
 
 
 def train_model(train_dataset, eval_dataset, config, model_name, output_dir):
-    # Load model and tokenizer
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     model = GPT2LMHeadModel.from_pretrained(model_name)
-
-    # Move model to device
     model = model.to(DEVICE)
 
-    # Print model size
     num_params = sum(p.numel() for p in model.parameters())
     print(f"Model parameters: {num_params:,}")
 
-    # Get training arguments from config
     training_config = config.get('training_arguments', {})
     training_args = TrainingArguments(**training_config)
 
-    # Initialize trainer
-    # Note: No data_collator needed - labels already prepared
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -188,11 +126,9 @@ def train_model(train_dataset, eval_dataset, config, model_name, output_dir):
         eval_dataset=eval_dataset,
     )
 
-    # Train
     print("Starting training (seq2seq method)...\n")
     trainer.train()
 
-    # Save final model
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
     print(f"Model saved to {output_dir}")
@@ -235,10 +171,8 @@ if __name__ == "__main__":
                         help="Path to input sentences file")
     parser.add_argument('-c', '--config', type=str, required=True,
                         help="Path to YAML configuration file")
-    parser.add_argument('-t', '--type', type=str, required=True,
-                        help="Type of perturbation (wordHop, partialReverse, localShuffle, etc.)")
 
     args = parser.parse_args()
     config = load_configs(args.config)
 
-    main(config=config, input_file=args.path, model_name=args.model, type_of_perturbation=args.type)
+    main(config=config, input_file=args.path, model_name=args.model)

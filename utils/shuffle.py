@@ -1,16 +1,12 @@
-import sys
-import os
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils.utils import load_sentences_from_file, save_dataset
-
 import argparse
 import os
-from pathlib import Path
 from typing import List
+
 from numpy.random import default_rng
 from tqdm import tqdm
 from transformers import GPT2Tokenizer
+
+from utils.utils import load_sentences_from_file, save_dataset
 
 tokenizer = None
 
@@ -75,30 +71,12 @@ def full_shuffle(text: str, seed: int = None) -> str:
     # Decode back to text
     return tokenizer.decode(shuffled_tokens)
 
-def load_sentences_from_file(input_file):
-    sentences = []
-
-    if not Path(input_file).exists():
-        raise FileNotFoundError(f"Input file not found: {input_file}")
-
-    with open(input_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line and len(line.split()) >= 3:  # Must have at least 3 tokens
-                sentences.append(line)
-
-    if not sentences:
-        raise ValueError(f"No valid sentences found in {input_file}")
-
-    print(f"Loaded {len(sentences)} sentences from {input_file}")
-    return sentences
-
 
 def local_shuffle_batch(texts: List[str]) -> List[tuple]:
     training_data = []
     for sentence in tqdm(texts):
         training_data.append((local_shuffle(sentence), sentence))
-    return list(zip(training_data, texts))
+    return training_data
 
 def pre_process(input_file, training_data_path):
     training_data = []

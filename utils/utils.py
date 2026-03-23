@@ -1,6 +1,8 @@
 from transformers import AutoTokenizer, AddedToken
 import json
 from pathlib import Path
+import torch
+import yaml
 
 MARKER_HOP_SING = "🅂"
 MARKER_HOP_PLUR = "🄿"
@@ -35,6 +37,23 @@ marker_rev_token = gpt2_rev_tokenizer.get_added_vocab()[
     MARKER_REV]
 
 MARKER_TOKEN_IDS = [marker_sg_token, marker_pl_token, marker_rev_token]
+
+
+def get_device():
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    print(f"Using device: {device}")
+    return device
+
+
+def load_configs(config_path):
+    with open(config_path, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f)
+    return config
 
 
 def save_dataset(data, output_file):

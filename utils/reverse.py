@@ -1,14 +1,12 @@
-import sys
-import os
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils.utils import load_sentences_from_file, save_dataset
-from transformers import GPT2Tokenizer
-import random
-from typing import List
-from tqdm import tqdm
 import argparse
 import os
+import random
+from typing import List
+
+from transformers import GPT2Tokenizer
+from tqdm import tqdm
+
+from utils.utils import load_sentences_from_file, save_dataset
 
 tokenizer = None
 
@@ -86,7 +84,7 @@ def partial_reverse_batch(texts: List[str]) -> List[tuple]:
     training_data = []
     for sentence in tqdm(texts):
         training_data.append((partial_reverse(sentence), sentence))
-    return list(zip(training_data, texts))
+    return training_data
 
 def pre_process(input_file, training_data_path):
     training_data = []

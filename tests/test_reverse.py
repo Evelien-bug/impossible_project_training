@@ -1,21 +1,14 @@
 import pytest
-import sys
-from pathlib import Path
 from unittest.mock import patch
-import random
 
-# Add the utils directory to the path to import the modules
-utils_path = Path(__file__).parent.parent / "utils"
-sys.path.append(str(utils_path))
-
-from reverse import noreverse, partial_reverse, full_reverse, REVERSE_MARKER
+from utils.reverse import noreverse, partial_reverse, full_reverse, REVERSE_MARKER
 
 # Test sentence
 text = "The quick brown fox jumps over the lazy dog."
 
 # --- Tests for noreverse ---
 # We mock random.randint to make the test deterministic
-@patch('random.randint', return_value=3)
+@patch('utils.reverse.random.randint', return_value=3)
 def test_noreverse(mock_randint):
     # Tokens: 'The', ' quick', ' brown', ' fox', ' jumps', ' over', ' the', ' lazy', ' dog', '.'
     # Insert marker at index 3
@@ -46,7 +39,7 @@ def test_partial_reverse_short_sentence():
 
 
 # --- Tests for full_reverse ---
-@patch('random.randint', return_value=4)
+@patch('utils.reverse.random.randint', return_value=4)
 def test_full_reverse(mock_randint):
     # Tokens: 'The', ' quick', ' brown', ' fox', ' jumps', ' over', ' the', ' lazy', ' dog', '.'
     # Insert marker at index 4: 'The', ' quick', ' brown', ' fox', ' 🅁', ' jumps', ' over', ' the', ' lazy', ' dog', '.'

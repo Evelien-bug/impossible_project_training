@@ -1,19 +1,16 @@
-import sys
-import os
 import pytest
 from unittest.mock import patch, MagicMock
 import yaml
 import json
-from pathlib import Path
-import importlib.util
-import torch
 
-# Load the finetune module from the fine-tuning directory
-finetune_path = Path(__file__).parent.parent / "fine-tuning" / "finetune.py"
-spec = importlib.util.spec_from_file_location("finetune", finetune_path)
-finetune = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(finetune)
-sys.modules['finetune'] = finetune
+from fine_tuning.finetune import (
+    load_configs,
+    prepare_dataset,
+    train_model,
+    main,
+    generate_training_data,
+)
+from utils.utils import load_sentences_from_file
 
 
 # Test data
@@ -47,24 +44,24 @@ def temp_files(tmp_path):
 
 def test_load_configs(temp_files):
     _, config_file = temp_files
-    config = finetune.load_configs(config_file)
+    config = load_configs(config_file)
     assert config == TEST_CONFIG
 
 def test_load_sentences_from_file(temp_files):
     input_file, _ = temp_files
-    sentences = finetune.load_sentences_from_file(input_file)
+    sentences = load_sentences_from_file(input_file)
     assert sentences == TEST_SENTENCES
 
 def test_load_sentences_from_file_not_found():
     with pytest.raises(FileNotFoundError):
-        finetune.load_sentences_from_file("non_existent_file.txt")
+        load_sentences_from_file("non_existent_file.txt")
 
-@patch('finetune.functions', {
+@patch('fine_tuning.finetune.functions', {
     "partialReverse": lambda x: [("corrupted " + s, s) for s in x]
 })
 def test_generate_training_data(temp_files):
     input_file, _ = temp_files
-    training_data = finetune.generate_training_data(str(input_file), "partialReverse")
+    training_data = generate_training_data(str(input_file), "partialReverse")
 
     assert len(training_data) == len(TEST_SENTENCES)
     for item in training_data:
@@ -74,26 +71,22 @@ def test_generate_training_data(temp_files):
         assert item[1] in TEST_SENTENCES
 
 
-@patch('finetune.GPT2Tokenizer.from_pretrained')
-@patch('finetune.tqdm', lambda x: x)
+@patch('fine_tuning.finetune.GPT2Tokenizer.from_pretrained')
+@patch('fine_tuning.finetune.tqdm', lambda x: x)
 def test_prepare_dataset(mock_tokenizer_from_pretrained):
     mock_tokenizer = MagicMock()
     mock_tokenizer.pad_token = "<|endoftext|>"
-    # Let's use a more realistic tokenization for "Corrected:"
     corrected_marker_tokens = [5025, 331]
     mock_tokenizer.encode.return_value = corrected_marker_tokens
 
-    prompt_tokens = [10, 20, 30, 40]    # "Fix this text: corrupted"
-    answer_tokens = [60, 70, 80]       # "correct sentence"
-    end_token = [50256]                # <|endoftext|>
+    prompt_tokens = [10, 20, 30, 40]
+    answer_tokens = [60, 70, 80]
+    end_token = [50256]
 
-    # "Fix this text: corrupted\nCorrected:"
     prompt_only_ids = prompt_tokens + corrected_marker_tokens
-    # "Fix this text: corrupted\nCorrected: correct sentence<|endoftext|>"
     full_text_ids = prompt_tokens + corrected_marker_tokens + answer_tokens + end_token
 
     def tokenize_side_effect(text, **kwargs):
-        # Differentiate based on whether the final answer is present
         if "correct sentence" in text:
             return {'input_ids': full_text_ids, 'attention_mask': [1] * len(full_text_ids)}
         else:
@@ -103,19 +96,12 @@ def test_prepare_dataset(mock_tokenizer_from_pretrained):
     mock_tokenizer_from_pretrained.return_value = mock_tokenizer
 
     training_data = [("corrupted", "correct sentence")]
-    # Use a smaller max_length for easier debugging
-    train_dataset, eval_dataset = finetune.prepare_dataset(
+    train_dataset, eval_dataset = prepare_dataset(
         training_data, mock_tokenizer, train_split=1.0, max_length=20
     )
 
     assert len(train_dataset) == 1
     assert len(eval_dataset) == 0
-
-    # Let's trace the logic to find the correct position
-    # prompt_length = len(prompt_only_ids) = 6
-    # The code finds corrected_marker_tokens at index 4 in full_text_ids.
-    # position = 4 + len(corrected_marker_tokens) = 4 + 2 = 6
-    # So labels should be [-100, -100, -100, -100, -100, -100, 60, 70, 80, 50256, -100, ...]
 
     sample = train_dataset[0]
 
@@ -126,9 +112,9 @@ def test_prepare_dataset(mock_tokenizer_from_pretrained):
     assert sample['labels'][6].item() != -100
 
 
-@patch('finetune.GPT2LMHeadModel.from_pretrained')
-@patch('finetune.GPT2Tokenizer.from_pretrained')
-@patch('finetune.Trainer')
+@patch('fine_tuning.finetune.GPT2LMHeadModel.from_pretrained')
+@patch('fine_tuning.finetune.GPT2Tokenizer.from_pretrained')
+@patch('fine_tuning.finetune.Trainer')
 def test_train_model(mock_trainer, mock_tokenizer, mock_model):
     mock_tokenizer_instance = MagicMock()
     mock_tokenizer.return_value = mock_tokenizer_instance
@@ -138,17 +124,17 @@ def test_train_model(mock_trainer, mock_tokenizer, mock_model):
     train_dataset = MagicMock()
     eval_dataset = MagicMock()
 
-    finetune.train_model(train_dataset, eval_dataset, TEST_CONFIG, "gpt2", "./test-output")
+    train_model(train_dataset, eval_dataset, TEST_CONFIG, "gpt2", "./test-output")
 
     mock_trainer.assert_called_once()
     trainer_instance = mock_trainer.return_value
     trainer_instance.train.assert_called_once()
     trainer_instance.save_model.assert_called_once_with("./test-output")
 
-@patch('finetune.train_model')
-@patch('finetune.prepare_dataset')
-@patch('finetune.generate_training_data')
-@patch('finetune.GPT2Tokenizer.from_pretrained')
+@patch('fine_tuning.finetune.train_model')
+@patch('fine_tuning.finetune.prepare_dataset')
+@patch('fine_tuning.finetune.generate_training_data')
+@patch('fine_tuning.finetune.GPT2Tokenizer.from_pretrained')
 def test_main(mock_tokenizer, mock_generate_training_data, mock_prepare_dataset, mock_train_model, temp_files):
     input_file, config_file = temp_files
 
@@ -157,7 +143,7 @@ def test_main(mock_tokenizer, mock_generate_training_data, mock_prepare_dataset,
 
     with patch('builtins.open', MagicMock()) as mock_open:
         with patch('json.load', MagicMock(return_value=[("corrupted", "original")])) as mock_json_load:
-            finetune.main(TEST_CONFIG, str(input_file), "gpt2", "partialReverse")
+            main(TEST_CONFIG, str(input_file), "gpt2", "partialReverse")
 
     mock_prepare_dataset.assert_called_once()
     mock_train_model.assert_called_once()

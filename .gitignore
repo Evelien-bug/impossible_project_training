@@ -17,4 +17,4 @@ test-logs/
 test-output/
 .venv
 .idea
-__pycache__
+__pycache__/

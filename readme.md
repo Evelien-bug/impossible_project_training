@@ -33,7 +33,7 @@ pip install -r requirements.txt  # Make sure to have torch, transformers, datase
 
 **Run:**
 ```bash
-python fine-tuning/finetune.py \
+python fine_tuning/finetune.py \
     --path data/input.txt \
     --config configs/finetune.yaml \
     --type wordHop
@@ -47,7 +47,7 @@ python fine-tuning/finetune.py \
 #### Example
 
 ```bash
-python fine-tuning/finetune.py -p data/my_sentences.txt -c configs/finetune.yaml -t localShuffle
+python fine_tuning/finetune.py -p data/my_sentences.txt -c configs/finetune.yaml -t localShuffle
 ```
 
 ### What Does `finetune.py` Do?
@@ -84,8 +84,8 @@ training_arguments:
 
 ## Project Structure
 
-- `fine-tuning/finetune.py` – Main script for training and data generation
-- `utils/reverse.py`, `utils/HOP.py`, `utils/shuffle.py` – Perturbation logic
+- `fine_tuning/finetune.py` – Main script for training and data generation
+- `utils/reverse.py`, `utils/hop.py`, `utils/shuffle.py` – Perturbation logic
 - `data/` – Place your input files here (optional)
 - `configs/` – Place your YAML training configs here
 

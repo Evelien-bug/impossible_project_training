@@ -1,9 +1,7 @@
-import sys
-import os
-
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import json
+import argparse
 from pathlib import Path
+
 import torch
 from transformers import (
     GPT2Tokenizer,
@@ -11,13 +9,12 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-import json
-import yaml
 from datasets import Dataset
-import argparse
 from tqdm import tqdm
+
+from utils.utils import load_sentences_from_file, save_dataset, load_configs, get_device
 from utils.reverse import partial_reverse_batch
-from utils.HOP import wordhop_batch
+from utils.hop import wordhop_batch
 from utils.shuffle import local_shuffle_batch
 
 functions = {
@@ -26,44 +23,7 @@ functions = {
     "wordHop": wordhop_batch
 }
 
-
-def load_configs(config_path):
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-    return config
-
-
-def get_device():
-    if torch.backends.mps.is_available():
-        device = torch.device("mps")
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
-    print(f"Using device: {device}")
-    return device
-
-
 DEVICE = get_device()
-
-
-def load_sentences_from_file(input_file):
-    sentences = []
-
-    if not Path(input_file).exists():
-        raise FileNotFoundError(f"Input file not found: {input_file}")
-
-    with open(input_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if line and len(line.split()) >= 3:  # Must have at least 3 tokens
-                sentences.append(line)
-
-    if not sentences:
-        raise ValueError(f"No valid sentences found in {input_file}")
-
-    print(f"Loaded {len(sentences)} sentences from {input_file}")
-    return sentences
 
 
 def generate_training_data(input_file, type_of_perturbation):
@@ -72,10 +32,6 @@ def generate_training_data(input_file, type_of_perturbation):
     training_data = functions[type_of_perturbation](sentences)
     return training_data
 
-def save_dataset(data, output_file):
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    print(f"Saved {len(data)} examples to {output_file}")
 
 def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
     # Split into train and eval
@@ -116,7 +72,6 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
             # Create labels with masking
             # -100 = ignored by loss function (prompt part)
             # actual token IDs = used for loss computation (output part)
-            # Find the actual position of "Corrected:" in the tokenized output
             corrected_token_ids = tokenizer.encode("Corrected:", add_special_tokens=False)
             position = None
             for i in range(len(encoded['input_ids']) - len(corrected_token_ids)):
@@ -125,12 +80,10 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
                     break
 
             if position is None:
-                # Fallback to your original method
                 position = prompt_length
 
             # Create labels
             labels = [-100] * position + encoded['input_ids'][position:]
-            # Ensure correct length
             labels = labels[:max_length]
             if len(labels) < max_length:
                 labels = labels + [-100] * (max_length - len(labels))
@@ -153,7 +106,7 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
     train_dataset = Dataset.from_dict(train_processed)
     eval_dataset = Dataset.from_dict(eval_processed)
 
-    # Set format for PyTorch - IMPORTANT: include 'labels' column
+    # Set format for PyTorch
     train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
     eval_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 
@@ -167,21 +120,14 @@ def train_model(
         model_name,
         output_dir='./gpt2-reversal',
 ):
-    # Load model and tokenizer
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
     model = GPT2LMHeadModel.from_pretrained(model_name)
-
-    # Move model to device (MPS/CUDA/CPU)
     model = model.to(DEVICE)
-
-    # NO data_collator - we handle labels ourselves in prepare_dataset
-    # This is important: DataCollatorForLanguageModeling would interfere with our custom masked labels
 
     training_config = config.get('training_arguments', {})
     training_args = TrainingArguments(**training_config)
 
-    # Initialize trainer
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -189,11 +135,9 @@ def train_model(
         eval_dataset=eval_dataset,
     )
 
-    # Train
     print("Starting training...")
     trainer.train()
 
-    # Save final model
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
     print(f"Model saved to {output_dir}")
@@ -207,7 +151,6 @@ def main(config, input_file, model_name, type_of_perturbation):
         raise ValueError("Output directory must be specified in training_arguments.output_dir")
     training_data_path = f"./training_data_{input_file.split('/')[-1].split('.')[0]}_{type_of_perturbation}.json"
 
-    # Generate training data from input file
     print(f"Reading sentences from {input_file}...")
     training_data = None
     if not Path(training_data_path).exists():
@@ -221,7 +164,6 @@ def main(config, input_file, model_name, type_of_perturbation):
         with open(training_data_path, 'r', encoding='utf-8') as f:
             training_data = json.load(f)
 
-    # Prepare tokenizer and datasets with masked labels
     print("\nPreparing datasets...")
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -234,7 +176,6 @@ def main(config, input_file, model_name, type_of_perturbation):
     print(f"Train samples: {len(train_dataset)}")
     print(f"Eval samples: {len(eval_dataset)}")
 
-    # Train model
     train_model(
         train_dataset,
         eval_dataset,

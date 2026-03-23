@@ -1,12 +1,6 @@
 import pytest
-import sys
-from pathlib import Path
 
-# Add the utils directory to the path to import the modules
-utils_path = Path(__file__).parent.parent / "utils"
-sys.path.append(str(utils_path))
-
-from HOP import nohop, tokenhop, wordhop, SINGULAR_MARKER, PLURAL_MARKER
+from utils.hop import nohop, tokenhop, wordhop, SINGULAR_MARKER, PLURAL_MARKER
 
 # Test sentences
 text_singular = "He cleans his very messy bookshelf."
