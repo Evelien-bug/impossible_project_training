@@ -78,18 +78,31 @@ def local_shuffle_batch(texts: List[str]) -> List[tuple]:
         training_data.append((local_shuffle(sentence), sentence))
     return training_data
 
-def pre_process(input_file, training_data_path):
+
+def pre_process(input_file, training_data_path, type='local3'):
     training_data = []
     sentences = load_sentences_from_file(input_file)
-    for sentence in tqdm(sentences):
-        training_data.append((local_shuffle(sentence), sentence))
+    if type == 'local3':
+        for sentence in tqdm(sentences):
+            training_data.append((local_shuffle(sentence, window_size= 3), sentence))
+
+    elif type == 'local5':
+        for sentence in tqdm(sentences):
+            training_data.append((local_shuffle(sentence, window_size= 5), sentence))
+
+    elif type == 'full':
+        for sentence in tqdm(sentences):
+            training_data.append((full_shuffle(sentence), sentence))
+
     save_dataset(training_data, training_data_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+
     parser.add_argument('-i', '--input', type=str, required=True, )
+    parser.add_argument("-t", '--type', type=str, required=True, choices=['local3', 'local5', 'full'], default='local3')
 
     args = parser.parse_args()
 
-    pre_process(args.input, f"training_data_{os.path.basename(args.input).split('.')[0]}_localShuffle.json")
+    pre_process(args.input, f"training_data_{os.path.basename(args.input).split('.')[0]}_{args.type}.json")
