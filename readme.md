@@ -100,9 +100,3 @@ Contributions and new perturbations are welcome!
 3. Commit & push
 4. Open a pull request
 
----
-
-## License
-
-(Currently no license specified; please add one if intending to permit use/reuse.)
-
