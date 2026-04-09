@@ -6,7 +6,7 @@ from numpy.random import default_rng
 from tqdm import tqdm
 from transformers import GPT2Tokenizer
 
-from utils.utils import load_sentences_from_file, save_dataset
+from utils import load_sentences_from_file, save_dataset
 
 tokenizer = None
 
@@ -79,20 +79,31 @@ def local_shuffle_batch(texts: List[str]) -> List[tuple]:
     return training_data
 
 
+def local_shuffle_batch_with_window(texts: List[str], window_size: int) -> List[tuple]:
+    training_data = []
+    for sentence in tqdm(texts):
+        training_data.append((local_shuffle(sentence, window_size=window_size), sentence))
+    return training_data
+
+
+def full_shuffle_batch(texts: List[str], seed: int = None) -> List[tuple]:
+    training_data = []
+    for sentence in tqdm(texts):
+        training_data.append((full_shuffle(sentence, seed=seed), sentence))
+    return training_data
+
+
 def pre_process(input_file, training_data_path, type='local3'):
     training_data = []
     sentences = load_sentences_from_file(input_file)
     if type == 'localShuffle3':
-        for sentence in tqdm(sentences):
-            training_data.append((local_shuffle(sentence, window_size= 3), sentence))
+        training_data = local_shuffle_batch_with_window(sentences, window_size=3)
 
     elif type == 'localShuffle5':
-        for sentence in tqdm(sentences):
-            training_data.append((local_shuffle(sentence, window_size= 5), sentence))
+        training_data = local_shuffle_batch_with_window(sentences, window_size=5)
 
     elif type == 'fullShuffle':
-        for sentence in tqdm(sentences):
-            training_data.append((full_shuffle(sentence, seed=57), sentence))
+        training_data = full_shuffle_batch(sentences, seed=57)
 
     save_dataset(training_data, training_data_path)
 
@@ -105,4 +116,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    pre_process(args.input, f"training_data_{os.path.basename(args.input).split('.')[0]}_{args.type}.json")
+    pre_process(args.input, f"training_data_{os.path.basename(args.input).split('.')[0]}_{args.type}.json", type= args.type)

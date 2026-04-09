@@ -19,11 +19,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils.utils import load_sentences_from_file, save_dataset, load_configs, get_device
 from utils.reverse import partial_reverse_batch
 from utils.hop import wordhop_batch
-from utils.shuffle import local_shuffle_batch
+from utils.shuffle import local_shuffle_batch, local_shuffle_batch_with_window, full_shuffle_batch
 
 functions = {
     "partialReverse": partial_reverse_batch,
     "localShuffle": local_shuffle_batch,
+    "localShuffle3": lambda texts: local_shuffle_batch_with_window(texts, window_size=3),
+    "localShuffle5": lambda texts: local_shuffle_batch_with_window(texts, window_size=5),
+    "fullShuffle": lambda texts: full_shuffle_batch(texts, seed=57),
     "wordHop": wordhop_batch
 }
 
@@ -211,5 +214,5 @@ if __name__ == "__main__":
     elif args.type == 'fullShuffle':
         model = 'mission-impossible-lms/deterministic-shuffle-s57-gpt2'
     else:
-        raise ValueError("Invalid perturbation type. Choose from 'wordHop', 'partialReverse', or 'localShuffle'.")
+        raise ValueError("Invalid perturbation type. Choose from 'wordHop', 'partialReverse', 'localShuffle', 'localShuffle3', 'localShuffle5', or 'fullShuffle'.")
     main(config=config, input_file=args.path, model_name=model, type_of_perturbation=args.type)

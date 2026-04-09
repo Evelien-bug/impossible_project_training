@@ -17,7 +17,7 @@ from evaluation.bleu import bleu_score
 from utils.utils import load_sentences_from_file, save_dataset, get_device
 from utils.reverse import partial_reverse_batch
 from utils.hop import wordhop_batch
-from utils.shuffle import local_shuffle_batch
+from utils.shuffle import local_shuffle_batch, local_shuffle_batch_with_window, full_shuffle_batch
 
 metrics = {
     'exact_match': exact_match,
@@ -27,6 +27,9 @@ metrics = {
 functions = {
     "partialReverse": partial_reverse_batch,
     "localShuffle": local_shuffle_batch,
+    "localShuffle3": lambda texts: local_shuffle_batch_with_window(texts, window_size=3),
+    "localShuffle5": lambda texts: local_shuffle_batch_with_window(texts, window_size=5),
+    "fullShuffle": lambda texts: full_shuffle_batch(texts, seed=57),
     "wordHop": wordhop_batch
 }
 
