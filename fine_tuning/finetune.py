@@ -203,16 +203,4 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     config = load_configs(args.config)
-    if args.type == 'wordHop':
-        model = 'mission-impossible-lms/word-hop-gpt2'
-    elif args.type == 'partialReverse':
-        model = 'mission-impossible-lms/partial-reverse-gpt2'
-    elif args.type == 'localShuffle3':
-        model = 'mission-impossible-lms/local-shuffle-w3-gpt2'
-    elif args.type == 'localShuffle5':
-        model = 'mission-impossible-lms/local-shuffle-w5-gpt2'
-    elif args.type == 'fullShuffle':
-        model = 'mission-impossible-lms/deterministic-shuffle-s57-gpt2'
-    else:
-        raise ValueError("Invalid perturbation type. Choose from 'wordHop', 'partialReverse', 'localShuffle', 'localShuffle3', 'localShuffle5', or 'fullShuffle'.")
-    main(config=config, input_file=args.path, model_name=model, type_of_perturbation=args.type)
+    model = 'gpt2-medium'
