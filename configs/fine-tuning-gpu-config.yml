@@ -1,6 +1,6 @@
 training_arguments:
-  output_dir: "./partial-reverse-minidataset-models"
-  logging_dir: "./partial-reverse-minidataset-logs"
+  output_dir: "./gpt2-medium-localshuffle"
+  logging_dir: "./gpt2-medium-localshuffle-logs"
   per_device_train_batch_size: 128
   per_device_eval_batch_size: 64
   gradient_accumulation_steps: 4
