@@ -13,50 +13,26 @@ from transformers import (
 from datasets import Dataset
 from tqdm import tqdm
 
-# Add parent directory to path to allow imports from utils
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from utils.utils import load_sentences_from_file, save_dataset, load_configs, get_device
-from utils.reverse import partial_reverse_batch
-from utils.hop import wordhop_batch
-from utils.shuffle import local_shuffle_batch, local_shuffle_batch_with_window, full_shuffle_batch
-
-functions = {
-    "partialReverse": partial_reverse_batch,
-    "localShuffle": local_shuffle_batch,
-    "localShuffle3": lambda texts: local_shuffle_batch_with_window(texts, window_size=3),
-    "localShuffle5": lambda texts: local_shuffle_batch_with_window(texts, window_size=5),
-    "fullShuffle": lambda texts: full_shuffle_batch(texts, seed=57),
-    "wordHop": wordhop_batch
-}
+from utils.utils import load_configs, get_device
 
 DEVICE = get_device()
 
 
-def generate_training_data(input_file, type_of_perturbation):
-    print("Generating training data...")
-    sentences = load_sentences_from_file(input_file)
-    training_data = functions[type_of_perturbation](sentences)
-    return training_data
-
-
 def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
-    # Split into train and eval
     split_idx = int(len(training_data) * train_split)
     train_data = training_data[:split_idx]
     eval_data = training_data[split_idx:]
 
     def process_data(data):
-        """Process data with masked labels."""
         input_ids_list = []
         attention_mask_list = []
         labels_list = []
 
         for corrupted, correct in tqdm(data):
-            # INSTRUCTION FORMAT - tells GPT-2 what to do
             full_text = f"Fix this text: {corrupted}\nCorrected: {correct}<|endoftext|>"
 
-            # Tokenize full text
             encoded = tokenizer(
                 full_text,
                 truncation=True,
@@ -65,7 +41,6 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
                 return_tensors=None
             )
 
-            # Find where "Corrected:" starts (where we want to start computing loss)
             prompt_text = f"Fix this text: {corrupted}\nCorrected:"
             prompt_encoded = tokenizer(
                 prompt_text,
@@ -76,9 +51,6 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
             )
             prompt_length = len(prompt_encoded['input_ids'])
 
-            # Create labels with masking
-            # -100 = ignored by loss function (prompt part)
-            # actual token IDs = used for loss computation (output part)
             corrected_token_ids = tokenizer.encode("Corrected:", add_special_tokens=False)
             position = None
             for i in range(len(encoded['input_ids']) - len(corrected_token_ids)):
@@ -89,11 +61,10 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
             if position is None:
                 position = prompt_length
 
-            # Create labels
             labels = [-100] * position + encoded['input_ids'][position:]
             labels = labels[:max_length]
             if len(labels) < max_length:
-                labels = labels + [-100] * (max_length - len(labels))
+                labels = labels + [-100] * (max_length - len(labels)]
 
             input_ids_list.append(encoded['input_ids'])
             attention_mask_list.append(encoded['attention_mask'])
@@ -109,11 +80,9 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
     train_processed = process_data(train_data)
     eval_processed = process_data(eval_data)
 
-    # Create datasets
     train_dataset = Dataset.from_dict(train_processed)
     eval_dataset = Dataset.from_dict(eval_processed)
 
-    # Set format for PyTorch
     train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
     eval_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 
@@ -125,7 +94,7 @@ def train_model(
         eval_dataset,
         config,
         model_name,
-        output_dir='./gpt2-reversal',
+        output_dir,
 ):
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
@@ -152,24 +121,14 @@ def train_model(
     return model, tokenizer
 
 
-def main(config, input_file, model_name, type_of_perturbation):
+def main(config, input_file, model_name):
     OUTPUT_DIR = config.get('training_arguments', {}).get('output_dir', None)
     if not OUTPUT_DIR:
         raise ValueError("Output directory must be specified in training_arguments.output_dir")
-    training_data_path = f"./training_data_{input_file.split('/')[-1].split('.')[0]}_{type_of_perturbation}.json"
 
-    print(f"Reading sentences from {input_file}...")
-    training_data = None
-    if not Path(training_data_path).exists():
-        print(f"{Path(training_data_path).resolve()} not found.\n Generating training data from {input_file}...")
-        training_data = generate_training_data(
-            input_file=input_file,
-            type_of_perturbation=type_of_perturbation)
-        save_dataset(training_data, training_data_path)
-    else:
-        print(f"Loading training data from {Path(training_data_path).resolve()}...")
-        with open(training_data_path, 'r', encoding='utf-8') as f:
-            training_data = json.load(f)
+    print(f"Loading training data from {input_file}...")
+    with open(input_file, 'r', encoding='utf-8') as f:
+        training_data = json.load(f)
 
     print("\nPreparing datasets...")
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
@@ -195,12 +154,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-p', '--path', type=str, required=True,
-                        help="Path to input sentences file")
+                        help="Path to pre-generated perturbed dataset")
     parser.add_argument('-c', '--config', type=str, required=True,
                         help="Path to YAML configuration file")
-    parser.add_argument('-t', '--type', type=str, required=True,
-                        help="Type of perturbation (wordHop, partialReverse, localShuffle3, localShuffle5, fullShuffle etc.)")
 
     args = parser.parse_args()
     config = load_configs(args.config)
     model = 'gpt2-medium'
+
+    main(config=config, input_file=args.path, model_name=model)
