@@ -7,6 +7,7 @@ import torch
 from transformers import (
     GPT2Tokenizer,
     GPT2LMHeadModel,
+    GPT2Config,
     Trainer,
     TrainingArguments,
 )
@@ -64,7 +65,7 @@ def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
             labels = [-100] * position + encoded['input_ids'][position:]
             labels = labels[:max_length]
             if len(labels) < max_length:
-                labels = labels + [-100] * (max_length - len(labels)]
+                labels = labels + [-100] * (max_length - len(labels))
 
             input_ids_list.append(encoded['input_ids'])
             attention_mask_list.append(encoded['attention_mask'])
@@ -98,7 +99,8 @@ def train_model(
 ):
     tokenizer = GPT2Tokenizer.from_pretrained(model_name)
     tokenizer.pad_token = tokenizer.eos_token
-    model = GPT2LMHeadModel.from_pretrained(model_name)
+    config_model = GPT2Config.from_pretrained(model_name)
+    model = GPT2LMHeadModel(config_model)
     model = model.to(DEVICE)
 
     training_config = config.get('training_arguments', {})
