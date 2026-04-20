@@ -139,7 +139,8 @@ def train_model(train_dataset, eval_dataset, config, model_name, output_dir):
 def main(config, input_file, model_name):
     MARKER = '🅁'
     OUTPUT_DIR = config.get('training_arguments', {}).get('output_dir', './gpt2-seq2seq')
-    training_data = generate_training_data(input_file=input_file, marker=MARKER)
+    with open(input_file, 'r', encoding='utf-8') as f:
+        training_data = json.load(f)
 
     print()
 
