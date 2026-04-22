@@ -1,0 +1,62 @@
+training_arguments:
+  output_dir: "./models/gpt2-medium-pretrain-localshuffle"
+  logging_dir: "./logs/gpt2-medium-pretrain-localshuffle"
+
+  # Stage 1 is from-scratch pretraining, so a higher learning rate is appropriate.
+  # Kallini used 6e-4 for her GPT-2 Small pretraining.
+  learning_rate: 6.0e-4
+  lr_scheduler_type: "cosine"
+  warmup_steps: 300
+
+  # Batch sizing — keep effective batch size similar to Kallini's 512 setup.
+  per_device_train_batch_size: 128
+  per_device_eval_batch_size: 64
+  gradient_accumulation_steps: 4
+
+  # Pretraining needs more epochs than finetuning.
+  # Adjust based on how long the pilot takes; Kallini trained for ~10-12 epochs.
+  num_train_epochs: 12
+  max_steps: -1
+
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+
+  eval_strategy: "steps"
+  eval_steps: 250
+
+  logging_strategy: "steps"
+  logging_steps: 50
+  logging_first_step: true
+
+  save_strategy: "steps"
+  save_steps: 500
+  # Keep a small number of checkpoints during pilot to save disk space.
+  # For final runs, increase or set to -1 for unlimited.
+  save_total_limit: 2
+
+  load_best_model_at_end: true
+  metric_for_best_model: "eval_loss"
+  greater_is_better: false
+
+  # Precision settings — bf16/tf32 assume a modern GPU (A100, H100, etc.).
+  # On older GPUs (V100) switch to fp16: true and remove bf16/tf32.
+  bf16: true
+  tf32: true
+  fp16: false
+
+  optim: "adamw_torch_fused"
+
+  # Dataloader settings — drop num_workers to 2-4 if running locally.
+  dataloader_num_workers: 16
+  dataloader_pin_memory: true
+  dataloader_persistent_workers: true
+  dataloader_prefetch_factor: 2
+
+  # No label smoothing for standard pretraining (Kallini did not use it).
+  # label_smoothing_factor: 0.0
+
+  remove_unused_columns: false
+  group_by_length: false
+  use_cpu: false
+  gradient_checkpointing: false
+  report_to: "tensorboard"
