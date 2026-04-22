@@ -7,7 +7,6 @@ import torch
 from transformers import (
     GPT2Tokenizer,
     GPT2LMHeadModel,
-    GPT2Config,
     Trainer,
     TrainingArguments,
 )
@@ -21,7 +20,7 @@ from utils.utils import load_configs, get_device
 DEVICE = get_device()
 
 
-def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=128):
+def prepare_dataset(training_data, tokenizer, train_split=0.9, max_length=512):
     split_idx = int(len(training_data) * train_split)
     train_data = training_data[:split_idx]
     eval_data = training_data[split_idx:]
@@ -94,14 +93,19 @@ def train_model(
         train_dataset,
         eval_dataset,
         config,
-        model_name,
+        stage1_model_path,
         output_dir,
 ):
-    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+    # Load tokenizer and model from the stage 1 output directory.
+    # This means the model is NOT randomly initialized — it has been pretrained on impossible language.
+    tokenizer = GPT2Tokenizer.from_pretrained(stage1_model_path)
     tokenizer.pad_token = tokenizer.eos_token
-    config_model = GPT2Config.from_pretrained(model_name)
-    model = GPT2LMHeadModel(config_model)
+    model = GPT2LMHeadModel.from_pretrained(stage1_model_path)
     model = model.to(DEVICE)
+
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f"Loaded stage 1 model from {stage1_model_path}")
+    print(f"Model parameters: {num_params:,}")
 
     training_config = config.get('training_arguments', {})
     training_args = TrainingArguments(**training_config)
@@ -113,17 +117,17 @@ def train_model(
         eval_dataset=eval_dataset,
     )
 
-    print("Starting training...")
+    print("Starting stage 2 finetuning for reconstruction...")
     trainer.train()
 
     trainer.save_model(output_dir)
     tokenizer.save_pretrained(output_dir)
-    print(f"Model saved to {output_dir}")
+    print(f"Stage 2 model saved to {output_dir}")
 
     return model, tokenizer
 
 
-def main(config, input_file, model_name):
+def main(config, input_file, stage1_model_path, max_samples=None):
     OUTPUT_DIR = config.get('training_arguments', {}).get('output_dir', None)
     if not OUTPUT_DIR:
         raise ValueError("Output directory must be specified in training_arguments.output_dir")
@@ -132,14 +136,19 @@ def main(config, input_file, model_name):
     with open(input_file, 'r', encoding='utf-8') as f:
         training_data = json.load(f)
 
+    if max_samples is not None:
+        training_data = training_data[:max_samples]
+        print(f"Limiting to first {max_samples} samples for pilot run.")
+
     print("\nPreparing datasets...")
-    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
+    # Use the stage 1 tokenizer so tokenization stays consistent between stages.
+    tokenizer = GPT2Tokenizer.from_pretrained(stage1_model_path)
     tokenizer.pad_token = tokenizer.eos_token
 
     train_dataset, eval_dataset = prepare_dataset(
         training_data,
         tokenizer,
-        max_length=128
+        max_length=512,
     )
     print(f"Train samples: {len(train_dataset)}")
     print(f"Eval samples: {len(eval_dataset)}")
@@ -148,20 +157,29 @@ def main(config, input_file, model_name):
         train_dataset,
         eval_dataset,
         config,
-        model_name=model_name,
-        output_dir=OUTPUT_DIR)
+        stage1_model_path=stage1_model_path,
+        output_dir=OUTPUT_DIR,
+    )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument('-p', '--path', type=str, required=True,
-                        help="Path to pre-generated perturbed dataset")
+                        help="Path to pre-generated perturbed pair dataset")
     parser.add_argument('-c', '--config', type=str, required=True,
                         help="Path to YAML configuration file")
+    parser.add_argument('-s', '--stage1-model', type=str, required=True,
+                        help="Path to the stage 1 pretrained model directory")
+    parser.add_argument('--max-samples', type=int, default=None,
+                        help="Limit dataset to first N samples (for pilot runs)")
 
     args = parser.parse_args()
     config = load_configs(args.config)
-    model = 'gpt2-medium'
 
-    main(config=config, input_file=args.path, model_name=model)
+    main(
+        config=config,
+        input_file=args.path,
+        stage1_model_path=args.stage1_model,
+        max_samples=args.max_samples,
+    )
